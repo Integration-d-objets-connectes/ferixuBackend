@@ -1,3 +1,5 @@
+# @author Éric Lachapelle
+
 """Abonnement et fichier JSONL, selon le service d'ingestion de la démo du cours."""
 import json
 import paho.mqtt.client as mqtt

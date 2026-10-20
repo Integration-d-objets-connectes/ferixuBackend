@@ -1,3 +1,6 @@
+# @author Félix Lachapelle
+# @author Éric Lachapelle
+
 """Exports explicites des classes, comme dans le paquet capteurs de la démo."""
 from .capteur import Capteur
 from .flotteur import Flotteur

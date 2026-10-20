@@ -1,3 +1,5 @@
+# @author Éric Lachapelle
+
 """Commande du feu ARD-625 avec GPIO Zero, broches en numérotation BCM."""
 from gpiozero import TrafficLights
 

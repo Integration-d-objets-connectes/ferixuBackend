@@ -1,3 +1,6 @@
+# @author Félix Lachapelle
+# @author Éric Lachapelle
+
 """Flotteur, BH1750 et feu dans le thread principal; publication MQTT séparée.
 
 Structure adaptée de la démo de la prof :

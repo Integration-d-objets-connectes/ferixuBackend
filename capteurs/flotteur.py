@@ -1,3 +1,5 @@
+# @author Éric Lachapelle
+
 """Lecture du flotteur : contact fermé = niveau insuffisant, à valider sur le Pi."""
 
 from datetime import datetime, timezone

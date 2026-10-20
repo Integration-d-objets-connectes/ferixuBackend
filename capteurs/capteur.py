@@ -1,3 +1,5 @@
+# @author Félix Lachapelle
+
 from abc import ABC, abstractmethod
 
 

@@ -1,3 +1,5 @@
+# @author Félix Lachapelle
+
 """Pilote BH1750 structuré comme le CapteurVL53L1X de la démo du cours."""
 from datetime import datetime, timezone
 import math

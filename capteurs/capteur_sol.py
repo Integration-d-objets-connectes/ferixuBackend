@@ -1,3 +1,6 @@
+# @author Félix Lachapelle
+# @author Éric Lachapelle
+
 """Pilote STEMMA Soil Sensor selon la classe Capteur de la démo du cours."""
 from datetime import datetime, timezone
 import math

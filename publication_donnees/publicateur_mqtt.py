@@ -1,3 +1,5 @@
+# @author Félix Lachapelle
+
 """Communication MQTT indépendante des pilotes et de l'acquisition."""
 
 import json
