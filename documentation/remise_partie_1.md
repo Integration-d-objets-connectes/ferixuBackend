@@ -75,6 +75,6 @@ La présentation sert à valider le montage physique, l’acquisition des donné
 - [Exigences fonctionnelles corrigées EF01 à EF24](exigences_fonctionnelles.md)
 - [Inventaire du matériel et statuts de réception](inventaire_materiel.md)
 - [Composants et fiche du basilic](README.md)
-- [Installation et collecte sur le Raspberry Pi](../raspberry_pi/README.md)
+- [Installation et collecte sur le Raspberry Pi](../README.md)
 
 Ces consignes définissent les attentes de la remise ; elles ne constituent pas une validation de l’état actuel du code ou du montage.
