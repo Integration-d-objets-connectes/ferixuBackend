@@ -55,3 +55,13 @@ tail -f donnees/lectures_capteurs.jsonl
 ```
 
 Configuration dans `config.py`. Arrêt avec `Ctrl+C`.
+
+## Répartition du travail — Partie 1
+
+| Responsable | Travail réalisé | Fichiers principaux |
+| --- | --- | --- |
+| Félix Lachapelle | Classe abstraite commune aux capteurs; lecture de la luminosité avec le BH1750 et horodatage des mesures; publication des mesures vers le broker MQTT. | `capteurs/capteur.py`, `capteurs/capteur_bh1750.py`, `publication_donnees/publicateur_mqtt.py` |
+| Éric Lachapelle | Lecture du niveau d’eau avec le flotteur et horodatage des mesures; commande du feu tricolore; abonnement aux topics MQTT et enregistrement des mesures reçues dans un fichier JSONL. | `capteurs/flotteur.py`, `actionneurs/feu_tricolore.py`, `ingestion/service_ingestion.py` |
+| Félix et Éric Lachapelle | Assemblage du programme principal, configuration commune et organisation des paquets; script d’essai MQTT; préparation du pilote du capteur de sol, dont l’intégration reste à compléter. | `main.py`, `config.py`, fichiers `__init__.py`, `publication_donnees/test_mqttx.py`, `capteurs/capteur_sol.py` |
+
+La commande de la pompe et la logique complète d’arrosage restent à réaliser et ne font pas partie des fonctionnalités terminées de cette remise.
