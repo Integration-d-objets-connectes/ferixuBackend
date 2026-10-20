@@ -1,6 +1,6 @@
 # Ferixu
 
-**Auteurs : Éric et Félix Lachapelle** — Projet IoT, partie 1.
+**Auteurs : Eric et Félix** — Projet IoT, partie 1.
 
 Surveillance d’une plante sur Raspberry Pi : acquisition horodatée, transmission MQTT et enregistrement dans un fichier JSONL.
 
