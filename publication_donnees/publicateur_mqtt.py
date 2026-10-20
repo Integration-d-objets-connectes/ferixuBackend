@@ -2,6 +2,7 @@
 
 import json
 import threading
+from queue import Queue, Full
 
 import paho.mqtt.client as mqtt
 
@@ -14,14 +15,29 @@ class PublicateurMQTT:
     def __init__(self, client_id: str):
         self._connexion = threading.Event()
         self._erreur_connexion = None
+        self.commandes = Queue(maxsize=100)
         self._client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2,
                                    client_id=client_id)
         self._client.on_connect = self._lors_connexion
         self._client.on_disconnect = self._lors_deconnexion
+        self._client.on_message = self._lors_message
+
+    def _lors_message(self, client, userdata, message):
+        # Le callback réseau ne touche jamais au matériel.
+        if message.retain or message.topic != config.TOPIC_COMMANDES:
+            return
+        try:
+            commande = json.loads(message.payload.decode("utf-8"))
+            if isinstance(commande, dict):
+                self.commandes.put_nowait(commande)
+        except (ValueError, UnicodeDecodeError, Full):
+            print("Commande MQTT invalide ou file pleine : ignorée.")
 
     def _lors_connexion(self, client, userdata, flags, reason_code, properties):
         """Signale la réponse du broker, y compris un refus de connexion."""
         self._erreur_connexion = str(reason_code) if reason_code.is_failure else None
+        if not reason_code.is_failure:
+            client.subscribe(config.TOPIC_COMMANDES, qos=1)
         self._connexion.set()
 
     def _lors_deconnexion(self, client, userdata, flags, reason_code, properties):

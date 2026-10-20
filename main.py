@@ -1,138 +1,149 @@
-"""Flotteur, BH1750 et feu dans le thread principal; publication MQTT séparée.
-
-Structure adaptée de la démo de la prof :
-https://github.com/5P0-Integration-d-objets-connectes/demo-broker-thread/blob/main/main.py
-"""
+"""Pattern du cours : acquisition/décision principales, publication dans un thread."""
 import threading
 import time
+from queue import Empty
+from datetime import datetime, timezone
 
 import config
-from capteurs import Flotteur, CapteurLumiere
+from capteurs import Flotteur, CapteurLumiere, SoilSensor
 from actionneurs import FeuCirculation
+from actionneurs.pompe import Pompe
+from controleur import Controleur
 from publication_donnees import PublicateurMQTT
-
-def mettre_a_jour_feu(feu, mesure):
-    """Eau insuffisante : rouge. Eau suffisante : vert pour la démonstration.
-
-    Ce scénario couvre la condition réservoir d'EF12, pas toute la logique
-    EF10 à EF13. Le vert indique ici seulement un réservoir suffisant;
-    il ne constitue pas une autorisation d'arrosage.
-    """
-    if mesure.get("etat") == "insuffisant" and mesure.get("vide") is True:
-        feu.allumer_rouge()
-    elif mesure.get("etat") == "suffisant" and mesure.get("vide") is False:
-        feu.allumer_vert()
-    else:
-        raise ValueError("État du réservoir invalide ou incohérent.")
-
-def publier_mesures_en_attente():
-    """Copie les acquisitions partagées sous verrou, puis publie hors du verrou."""
-    with verrou:
-        mesures = mesures_en_attente.copy()
-        mesures_en_attente.clear()
-    for topic, mesure in mesures:
-        publicateur.publier(topic, mesure)
-
-
-def boucle_publication():
-    """Thread de publication périodique, comme dans la démo du cours."""
-    try:
-        # Event.wait permet de sortir immédiatement lors d'un Ctrl+C.
-        while not arret.wait(config.PERIODE_PUBLICATION):
-            publier_mesures_en_attente()
-        # Ne pas perdre la dernière acquisition si l'arrêt précède l'échéance.
-        publier_mesures_en_attente()
-    except Exception as erreur:
-        print(f"Erreur de publication MQTT : {erreur}")
-        arret.set()
 
 
 def creer_bus_i2c():
-    """Crée le bus dans le programme principal, comme dans la démo de la prof."""
     import board
     return board.I2C()
 
 
 def main():
-    """Lit les capteurs à leurs périodes respectives pendant que le thread publie."""
-    global mesures_en_attente, verrou, arret, publicateur
-
-    # Partagé entre les deux threads, comme le compteur de la démo.
-    # Ici chaque acquisition doit être conservée, pas seulement un compteur.
-    mesures_en_attente = []
-    verrou = threading.Lock()
     arret = threading.Event()
-    thread_publication = None
-    flotteur = None
-    i2c = None
-    capteur_lumiere = None
-    feu = None
-    publicateur = None
+    verrou = threading.Lock()
+    mesures_en_attente = []
+    flotteur = feu = pompe = i2c = publicateur = thread = None
+
+    def emettre(nom, mesure):
+        topic = {"eau": config.TOPIC_EAU, "sol": config.TOPIC_SOL,
+                 "lumiere": config.TOPIC_LUMIERE, "statut": config.TOPIC_STATUT,
+                 "resultat": config.TOPIC_RESULTAT}[nom]
+        with verrou:
+            mesures_en_attente.append((topic, mesure))
+
+    def publier():
+        with verrou:
+            mesures = mesures_en_attente.copy()
+            mesures_en_attente.clear()
+        for topic, mesure in mesures:
+            publicateur.publier(topic, mesure)
+
+    def boucle_publication():
+        try:
+            while not arret.wait(config.PERIODE_PUBLICATION):
+                publier()
+            publier()
+        except Exception as erreur:
+            print(f"Erreur MQTT, arrêt du matériel : {erreur}")
+            arret.set()
+
     try:
+        # Créer le relais inactif avant de démarrer la communication.
+        pompe = Pompe(config.GPIO_RELAIS, config.RELAIS_ACTIF_HAUT)
         flotteur = Flotteur(config.GPIO_FLOTTEUR, config.PERIODE_LECTURE_RESERVOIR)
-        feu = FeuCirculation(config.GPIO_FEU_ROUGE, config.GPIO_FEU_JAUNE,
-                            config.GPIO_FEU_VERT)
-        publicateur = PublicateurMQTT(client_id="ferixu-publicateur")
+        feu = FeuCirculation(config.GPIO_FEU_ROUGE, config.GPIO_FEU_JAUNE, config.GPIO_FEU_VERT)
+        controleur = Controleur(config.FICHIER_ETAT, flotteur, pompe, feu, emettre,
+                                zone=config.FUSEAU_HORAIRE)
+        publicateur = PublicateurMQTT("ferixu-publicateur")
         publicateur.connecter()
-
-        thread_publication = threading.Thread(target=boucle_publication)
-        thread_publication.start()
-
-        # Horloge monotone pour séparer EF03 (60 s) et EF05 (600 s).
-        prochaine_eau = time.monotonic()
-        prochaine_lumiere = prochaine_eau
+        thread = threading.Thread(target=boucle_publication)
+        thread.start()
+        capteur_sol = capteur_lumiere = None
+        prochaine_sol = prochaine_lumiere = prochain_statut = time.monotonic()
         while not arret.is_set():
             maintenant = time.monotonic()
-            if maintenant >= prochaine_eau:
-                mesure = flotteur.lire()
-                mettre_a_jour_feu(feu, mesure)
-                with verrou:
-                    mesures_en_attente.append((config.TOPIC_EAU, mesure))
-                prochaine_eau = maintenant + flotteur.periode_lecture
+            controleur.mettre_a_jour(maintenant)
+            # Les commandes attendent le thread principal; aucune activation depuis Paho.
+            for _ in range(10):
+                try:
+                    commande = publicateur.commandes.get_nowait()
+                except Empty:
+                    break
+                try:
+                    controleur.commande(commande, maintenant)
+                except (ValueError, KeyError, TypeError, OSError, RuntimeError) as erreur:
+                    resultat = {"id": commande.get("id"), "succes": False, "message": str(erreur)}
+                else:
+                    resultat = {"id": commande.get("id"), "succes": True, "message": "Commande exécutée."}
+                resultat["horodatage"] = datetime.now(timezone.utc).isoformat()
+                emettre("resultat", resultat)
+                prochain_statut = maintenant
 
-            if maintenant >= prochaine_lumiere:
+            # EF05 : lecture du réservoir lors de chaque acquisition du sol.
+            # Éviter de lancer une lecture I2C pendant les trois secondes d'arrosage.
+            if controleur.fin_pompe is None and maintenant >= prochaine_sol:
+                controleur.lire_eau()
+                try:
+                    if i2c is None:
+                        i2c = creer_bus_i2c()
+                    if capteur_sol is None:
+                        capteur_sol = SoilSensor(i2c, config.PERIODE_LECTURE_SOL,
+                                                config.HUMIDITE_BRUTE_SEC, config.HUMIDITE_BRUTE_HUMIDE)
+                    controleur.recevoir("sol", capteur_sol.lire())
+                except (OSError, RuntimeError, ValueError, ImportError) as erreur:
+                    controleur.erreurs["sol"] = str(erreur)
+                    capteur_sol = None
+                    print(f"Sol indisponible : {erreur}")
+                else:
+                    try:
+                        controleur.arroser("automatique", time.monotonic())
+                    except (ValueError, OSError, RuntimeError) as erreur:
+                        controleur.erreurs["arrosage"] = str(erreur)
+                prochaine_sol = maintenant + config.PERIODE_LECTURE_SOL
+
+            if controleur.fin_pompe is None and maintenant >= prochaine_lumiere:
                 try:
                     if i2c is None:
                         i2c = creer_bus_i2c()
                     if capteur_lumiere is None:
                         capteur_lumiere = CapteurLumiere(i2c, config.PERIODE_LECTURE_LUMIERE)
-                    mesure = capteur_lumiere.lire()
+                    controleur.recevoir("lumiere", capteur_lumiere.lire())
                 except (OSError, RuntimeError, ValueError, ImportError) as erreur:
-                    # Ne pas transformer une absence/erreur en mesure de zéro lux.
-                    print(f"BH1750 indisponible : {erreur}; nouvelle tentative dans 60 s.")
+                    controleur.erreurs["lumiere"] = str(erreur)
+                    controleur.derniere_lumiere = None
                     capteur_lumiere = None
-                else:
-                    with verrou:
-                        mesures_en_attente.append((config.TOPIC_LUMIERE, mesure))
+                    print(f"BH1750 indisponible : {erreur}")
                 prochaine_lumiere = maintenant + config.PERIODE_LECTURE_LUMIERE
-
-            # Attendre la prochaine lecture, sans bloquer le thread MQTT.
-            attente = min(prochaine_eau, prochaine_lumiere) - time.monotonic()
-            arret.wait(max(0, attente))
+            if maintenant >= prochain_statut:
+                emettre("statut", controleur.statut())
+                prochain_statut = maintenant + config.PERIODE_PUBLICATION
+            arret.wait(0.1)
     except KeyboardInterrupt:
-        print("Arrêt de la lecture de données…")
+        print("Arrêt de Ferixu…")
     finally:
-        # Même ordre que la prof : signaler, joindre, puis déconnecter.
-        arret.set()
-        if thread_publication is not None and thread_publication.ident is not None:
-            thread_publication.join()
-        # Les finally garantissent la fermeture des GPIO même si la
-        # déconnexion MQTT ou la fermeture du flotteur produit une erreur.
+        # Couper la pompe avant toute attente réseau ou fermeture de capteur.
         try:
-            if publicateur is not None:
-                publicateur.deconnecter()
+            if pompe is not None:
+                pompe.fermer()
         finally:
+            arret.set()
             try:
-                if flotteur is not None:
-                    flotteur.fermer()
+                if thread is not None and thread.ident is not None:
+                    thread.join()
             finally:
                 try:
-                    if feu is not None:
-                        feu.fermer()
+                    if publicateur is not None:
+                        publicateur.deconnecter()
                 finally:
-                    # Le pilote reçoit ce bus; c'est donc main.py qui le libère.
-                    if i2c is not None:
-                        i2c.deinit()
+                    try:
+                        if flotteur is not None:
+                            flotteur.fermer()
+                    finally:
+                        try:
+                            if feu is not None:
+                                feu.fermer()
+                        finally:
+                            if i2c is not None:
+                                i2c.deinit()
 
 
 if __name__ == "__main__":
