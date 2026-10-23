@@ -31,7 +31,7 @@ HUMIDITE_BRUTE_SEC = None
 HUMIDITE_BRUTE_HUMIDE = None
 
 # Compléter selon le montage réel; None laisse la pompe désactivée.
-GPIO_RELAIS = None
+GPIO_RELAIS = 17
 RELAIS_ACTIF_HAUT = True
 FUSEAU_HORAIRE = "America/Toronto"
 FICHIER_ETAT = RACINE / "donnees" / "etat.json"
