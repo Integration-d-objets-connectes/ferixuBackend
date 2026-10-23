@@ -2,6 +2,9 @@
 
 """Lecture du flotteur : contact fermé = niveau insuffisant, à valider sur le Pi."""
 
+from __future__ import annotations
+
+
 from datetime import datetime, timezone
 
 from gpiozero import Button
@@ -10,21 +13,20 @@ from .capteur import Capteur
 
 
 class Flotteur(Capteur):
-    def __init__(self, pin_flotteur=16, periode_lecture=600):
+    def __init__(self, pin_flotteur: int = 16, periode_lecture: float = 600) -> None:
         super().__init__("réservoir", periode_lecture)
         self.bouton = Button(pin_flotteur)
 
     @property
-    def eau(self):
+    def eau(self) -> bool:
         """Lit l'état réel du contact, même avant le premier changement GPIO."""
         return not self.bouton.is_pressed
 
     def lire(self) -> dict:
         """Horodate l'état du réservoir à l'acquisition, en ISO 8601 UTC."""
-        # pourquoi une nouvelle variable ?
+        # Une seule lecture garantit la cohérence des deux champs du contrat MQTT.
         eau = self.eau
         return {
-            # pourquoi etat ET vide
             "etat": "suffisant" if eau else "insuffisant",
             "vide": not eau,
             "horodatage": datetime.now(timezone.utc).isoformat(),
