@@ -1,0 +1,15 @@
+const assert=require('node:assert/strict');
+const m=require('./simulation.js');
+const s=m.defaults();
+for(const [humidity,hours,empty,expected] of [[40,6,false,'green'],[39,6,false,'yellow'],[30,6,false,'yellow'],[29.9,6,false,'red'],[46,3.6,false,'yellow'],[46,3.59,false,'red'],[46,6,true,'red'],[35,2,false,'red']])assert.equal(m.status({...s,humidity,hours,empty}).level,expected);
+assert.equal(m.status({...s,lux:0}).level,'green','Le feu dépend du cumul lumineux');
+assert.equal(m.status({...s,humidity:24,hours:2,empty:true}).reasons.length,3);
+const dry={...s,humidity:24};assert.equal(m.automatic(dry),'ready');
+assert.notEqual(m.automatic({...dry,auto:false}),'ready');assert.notEqual(m.automatic({...dry,empty:true}),'ready');
+assert.notEqual(m.automatic({...dry,lastAuto:s.now-1799999}),'ready');assert.equal(m.automatic({...dry,lastAuto:s.now-1800000}),'ready');
+const events=Array.from({length:6},(_,i)=>({at:s.now-i*3600000,type:'auto'}));
+assert.match(m.automatic({...dry,events}),/Limite/);
+assert.equal(m.automatic({...dry,events:events.map(e=>({...e,type:'manual'}))}),'ready');
+assert.equal(m.automatic({...dry,events:events.map(e=>({...e,at:e.at-86400000}))}),'ready');
+assert.equal(m.status({...s,settings:{humidity:50}}).level,'green','Seuils du feu fixes EF10–12');
+console.log('16 contrôles : seuils, priorité rouge, retour normal, délai, limite 24 h et sécurité.');
