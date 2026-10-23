@@ -72,3 +72,46 @@ L’utilisateur pourra :
 - modifier les seuils et les paramètres du système.
 
 Même en mode manuel, la pompe ne pourra jamais fonctionner lorsque l’interrupteur à flotteur indique que le niveau d’eau est insuffisant.
+
+
+## Couverture du backend
+
+Cette section distingue les règles implémentées des écrans à réaliser. Les tests matériels restent à effectuer; cette liste ne certifie pas le montage.
+
+| Exigences | Implémentation backend | Limite / interface restante |
+| --- | --- | --- |
+| EF01–EF02 | Sol acquis ensemble toutes les 600 s et envoyé sur `ferixu/sol` | Configurer la calibration pour obtenir les %; sinon `humidite_pct` vaut `null` |
+| EF03–EF04 | Lux toutes les 60 s, cumul au seuil et répartition par jour dans `controleur.py` | Cumul estimé entre mesures valides, aucune durée ajoutée pendant une interruption > 90 s |
+| EF05 | Eau lue avec le sol, avant/après l’arrosage et pendant la pompe | Valider le sens du contact sur le montage |
+| EF06–EF09 | Conditions automatiques, coupure ≤ 3 s, attente de 30 min après la fin, maximum de 6 sur 24 h glissantes | Mode automatique désactivé par défaut; configurer le relais |
+| EF10–EF13 | Priorité rouge, jaune, vert et retour à la couleur calculée | Données nécessaires manquantes : état inconnu/feu éteint si aucun rouge connu |
+| EF14–EF16 | Commandes `arroser`, `parametres` et `tester_pompe`; contrôle d’eau commun | Boutons et application hors périmètre |
+| EF17 | Commande `tester_feu` : vert, jaune, rouge, puis retour à la décision | Bouton hors périmètre |
+| EF18 | Dernières mesures et horodatages dans `ferixu/statut` | Affichage hors périmètre |
+| EF19–EF20 | Mesures sol/lumière horodatées enregistrées en JSONL | Graphiques hors périmètre |
+| EF21–EF22 | 7 jours de cumul et total du jour dans `ferixu/statut` | Affichage et objectif visuel 6–8 h hors périmètre |
+| EF23 | Dernier arrosage, nombre sur 24 h et prochaine échéance dans le statut | Affichage hors périmètre |
+| EF24 | Commande `parametres`, validation, enregistrement et utilisation par les règles | Formulaire hors périmètre |
+
+### Précisions des règles
+
+- Le pourcentage d’humidité est un indice linéaire relatif à deux références mesurées (sec/humide), limité à 0–100 %. Il n’est pas calculé sans calibration.
+- L’intervalle jaune d’humidité est **du seuil minimal inclus à 40 % exclus** (par défaut 30 ≤ humidité < 40), y compris les valeurs décimales. Le seuil minimal modifié par EF24 est utilisé pour le rouge et l’arrosage.
+- La priorité est rouge, puis inconnu si les données requises sont indisponibles, puis vert ou jaune. Le mode de test du feu remplace temporairement l’indication pendant trois secondes.
+- Un sol de plus de 660 s ou une lecture en erreur ne permet pas d’arrosage automatique. Avant toute activation, le flotteur est relu; une erreur interdit l’activation. L’humidité non calibrée n’empêche pas un arrosage manuel si l’eau est suffisante.
+- Les paramètres modifiables sont `humidite_min` (0–100 %), `lux_min` (1–200 000 lux), `duree_arrosage` (0,1–3 s) et `automatique` (booléen). La limite de 3 s reste applicable aux commandes et tests.
+- Les limites de 30 min et 6/24 h concernent l’arrosage automatique. Le compteur global affiché sur 24 h comprend aussi les activations manuelles et tests; les tentatives enregistrées avant activation sont comptées par prudence en cas de coupure.
+- La journée lumineuse suit `America/Toronto`. Le dernier échantillon valide représente l’intervalle jusqu’au suivant si cet intervalle ne dépasse pas 90 s. Le seuil modifié ne recalcule pas le passé.
+- `donnees/etat.json` conserve paramètres, cumuls et activations au redémarrage. Si son chargement ou son enregistrement échoue, le programme ne continue pas à commander la pompe.
+
+### Exigences techniques nécessaires à ces règles
+
+| Référence | Exigence |
+| --- | --- |
+| ET01 | Une erreur de capteur ne doit jamais devenir une mesure valide ou une autorisation d’arrosage. |
+| ET02 | Le relais doit être inactif au démarrage, coupé à l’arrêt, et l’activation limitée dans le temps. |
+| ET03 | Les données partagées entre acquisition et publication doivent être protégées par un verrou; les commandes matérielles sont exécutées par le thread principal. |
+| ET04 | Les paramètres et compteurs nécessaires aux limites doivent être conservés au redémarrage. |
+| ET05 | Toute commande doit recevoir un résultat corrélé à son identifiant. Les commandes expirées, retained ou déjà traitées récemment doivent être refusées/ignorées. |
+
+Ces précisions sont des choix d’implémentation du projet, pas de nouvelles consignes attribuées au cours. Le pattern de threads vient de la [démo du cours](https://github.com/5P0-Integration-d-objets-connectes/demo-broker-thread).
