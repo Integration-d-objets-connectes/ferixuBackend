@@ -18,7 +18,7 @@ class Pompe:
     def allumer(self, duree=3):
         if not self.disponible:
             raise ValueError("Broche du relais non configurée.")
-        if not 0 < duree <= 3:
+        if not 0 < duree <= 20:
             raise ValueError("Durée de pompe hors limites.")
         self.eteindre()
         with self._verrou:
