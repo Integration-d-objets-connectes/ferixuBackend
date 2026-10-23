@@ -24,7 +24,7 @@ PERIODE_PUBLICATION = 5
 PERIODE_LECTURE_LUMIERE = 60
 
 # EF01 et EF02 : humidité et température acquises ensemble toutes les 10 min.
-PERIODE_LECTURE_SOL = 600
+PERIODE_LECTURE_SOL = 1
 # Mesurer ces deux valeurs sur le capteur réellement utilisé avant de les remplir.
 # Sans calibration, humidite_pct reste None (null dans le JSON).
 HUMIDITE_BRUTE_SEC = None
