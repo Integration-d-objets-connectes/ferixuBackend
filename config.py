@@ -26,10 +26,11 @@ PERIODE_LECTURE_LUMIERE = 60
 # EF01 et EF02 : humidité et température acquises ensemble toutes les 10 min.
 PERIODE_LECTURE_SOL = 1
 # Mesurer ces deux valeurs sur le capteur réellement utilisé avant de les remplir.
-# Sans calibration, humidite_pct reste None (null dans le JSON).
-HUMIDITE_BRUTE_SEC = None
-HUMIDITE_BRUTE_HUMIDE = None
-
+# Sans calibration, humidite_pct reste None (null dans le JSON).]
+HUMIDITE_BRUTE_SEC = 340
+HUMIDITE_BRUTE_HUMIDE = 1016
+#dry as fuck 0% 340
+#wet as fuck 100% 1016
 # Compléter selon le montage réel; None laisse la pompe désactivée.
 GPIO_RELAIS = 17
 RELAIS_ACTIF_HAUT = True
