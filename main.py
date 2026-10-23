@@ -49,6 +49,7 @@ def main():
     try:
         # Créer le relais inactif avant de démarrer la communication.
         pompe = Pompe(config.GPIO_RELAIS, config.RELAIS_ACTIF_HAUT)
+        pompe.allumer(3)
         flotteur = Flotteur(config.GPIO_FLOTTEUR, config.PERIODE_LECTURE_RESERVOIR)
         feu = FeuCirculation(config.GPIO_FEU_ROUGE, config.GPIO_FEU_JAUNE, config.GPIO_FEU_VERT)
         controleur = Controleur(config.FICHIER_ETAT, flotteur, pompe, feu, emettre,
