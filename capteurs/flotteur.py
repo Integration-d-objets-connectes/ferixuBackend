@@ -21,8 +21,10 @@ class Flotteur(Capteur):
 
     def lire(self) -> dict:
         """Horodate l'état du réservoir à l'acquisition, en ISO 8601 UTC."""
+        # pourquoi une nouvelle variable ?
         eau = self.eau
         return {
+            # pourquoi etat ET vide
             "etat": "suffisant" if eau else "insuffisant",
             "vide": not eau,
             "horodatage": datetime.now(timezone.utc).isoformat(),

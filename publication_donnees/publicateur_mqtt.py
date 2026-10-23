@@ -12,19 +12,20 @@ import config
 
 
 class PublicateurMQTT:
+    # pas assez d'espaces, c'est illisible
     """Publie les mesures horodatées sans modifier les données acquises."""
 
     def __init__(self, client_id: str):
         self._connexion = threading.Event()
         self._erreur_connexion = None
         self.commandes = Queue(maxsize=100)
-        self._client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2,
-                                   client_id=client_id)
+        self._client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=client_id)
         self._client.on_connect = self._lors_connexion
         self._client.on_disconnect = self._lors_deconnexion
         self._client.on_message = self._lors_message
 
     def _lors_message(self, client, userdata, message):
+        # pas assez d'espaces, c'est illisible
         # Le callback réseau ne touche jamais au matériel.
         if message.retain or message.topic != config.TOPIC_COMMANDES:
             return
@@ -36,6 +37,7 @@ class PublicateurMQTT:
             print("Commande MQTT invalide ou file pleine : ignorée.")
 
     def _lors_connexion(self, client, userdata, flags, reason_code, properties):
+        # pas assez d'espaces, c'est illisible
         """Signale la réponse du broker, y compris un refus de connexion."""
         self._erreur_connexion = str(reason_code) if reason_code.is_failure else None
         if not reason_code.is_failure:
@@ -47,6 +49,7 @@ class PublicateurMQTT:
         self._connexion.clear()
 
     def connecter(self) -> None:
+        # pas assez d'espaces, c'est illisible
         """Attend la confirmation du broker avant de permettre les envois."""
         self._connexion.clear()
         self._erreur_connexion = None
@@ -62,6 +65,7 @@ class PublicateurMQTT:
             raise
 
     def publier(self, topic: str, donnees: dict) -> None:
+        # pas assez d'espaces, c'est illisible
         """Conserve l'horodatage UTC d'acquisition et attend l'accusé QoS 1."""
         if not donnees.get("horodatage"):
             raise ValueError("La mesure doit être horodatée lors de l'acquisition.")

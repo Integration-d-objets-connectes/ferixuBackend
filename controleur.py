@@ -8,6 +8,7 @@ from pathlib import Path
 
 
 def utc():
+    # pourquoi une fonction
     return datetime.now(timezone.utc)
 
 
@@ -16,6 +17,7 @@ class ErreurPersistance(Exception):
 
 
 def charger_etat(chemin):
+    # pas assez d'espaces, c'est illisible
     chemin = Path(chemin)
     if not chemin.exists():
         return {"parametres": {"humidite_min": 30, "lux_min": 10000,
@@ -32,9 +34,11 @@ def charger_etat(chemin):
 
 
 def valider_parametres(p):
+    # pas assez d'espace, trop de stock
     for cle, mini, maxi in (("humidite_min", 0, 100), ("lux_min", 1, 200000),
                            ("duree_arrosage", 0.1, 3)):
         v = p[cle]
+        # ligne trop chargée
         if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) or not mini <= v <= maxi:
             raise ValueError(f"Paramètre invalide : {cle} ({mini} à {maxi}).")
     if type(p["automatique"]) is not bool:
@@ -46,17 +50,21 @@ class Controleur:
                  zone="America/Toronto"):
         self.chemin = Path(chemin)
         self.etat = charger_etat(chemin)
+        # trop en une ligne, mieux de séparer avec des lignes vides pour l'organisation
         self.flotteur, self.pompe, self.feu = flotteur, pompe, feu
         self.emettre, self.maintenant = emettre, maintenant
         self.zone = ZoneInfo(zone)
         self.mesures = {}
         self.fin_pompe = None
+        # pas de tests dans le controller, seulement utiliser des fichiers séparés si on a besoin de tests
         self.fin_test = None
         self.debut_test = None
         self.derniere_lumiere = None
         self.erreurs = {}
 
     def sauvegarder(self):
+        # pas assez d'espaces, c'est illisible
+
         try:
             self.chemin.parent.mkdir(parents=True, exist_ok=True)
             temporaire = self.chemin.with_suffix(".tmp")
@@ -66,11 +74,14 @@ class Controleur:
             raise ErreurPersistance("Enregistrement impossible; arrêt de sécurité.") from erreur
 
     def recevoir(self, nom, mesure):
+        # pas assez d'espaces, c'est illisible
+        # trop d'indentation : ça rends le code horrible à lire 
         self.mesures[nom] = mesure
         self.erreurs.pop(nom, None)
         if nom == "lumiere":
             date = datetime.fromisoformat(mesure["horodatage"])
             if self.derniere_lumiere:
+                # éviter le plus possible de retourner des tuples
                 precedente, lux = self.derniere_lumiere
                 secondes = (date - precedente).total_seconds()
                 # Pas de lumière inventée pendant une panne ou un redémarrage.
@@ -78,8 +89,7 @@ class Controleur:
                     curseur = precedente
                     while curseur < date:
                         locale = curseur.astimezone(self.zone)
-                        minuit = datetime.combine(locale.date() + timedelta(days=1),
-                                                  datetime.min.time(), self.zone).astimezone(timezone.utc)
+                        minuit = datetime.combine(locale.date() + timedelta(days=1), datetime.min.time(), self.zone).astimezone(timezone.utc)
                         fin = min(date, minuit)
                         jour = str(locale.date())
                         self.etat["lumiere_jours"][jour] = self.etat["lumiere_jours"].get(jour, 0) + (fin - curseur).total_seconds()
@@ -89,6 +99,7 @@ class Controleur:
         self.emettre(nom, mesure)
 
     def lire_eau(self):
+        # pas assez d'espaces, c'est illisible
         try:
             mesure = self.flotteur.lire()
             if mesure.get("etat") not in ("suffisant", "insuffisant") or mesure.get("vide") is not (mesure["etat"] == "insuffisant"):
@@ -100,6 +111,7 @@ class Controleur:
             return False
 
     def recentes(self, nom, age):
+        # pas assez d'espaces, c'est illisible
         mesure = self.mesures.get(nom)
         if not mesure or nom in self.erreurs:
             return False
@@ -108,9 +120,11 @@ class Controleur:
 
     def arrosages_recents(self):
         limite = self.maintenant() - timedelta(hours=24)
+        # trop en une ligne
         return [a for a in self.etat["arrosages"] if datetime.fromisoformat(a["horodatage"]) > limite]
 
     def prochain_auto(self):
+        # pas assez d'espaces, c'est illisible
         autos = [a for a in self.etat["arrosages"] if a["mode"] == "automatique"]
         if not autos:
             return None
@@ -120,6 +134,7 @@ class Controleur:
 
     def arroser(self, mode, monotone):
         """Vérifie les conditions communes et celles réservées à l'automatique."""
+        # pas assez d'espaces, c'est illisible
         if self.fin_pompe is not None:
             raise ValueError("Arrosage déjà en cours.")
         if mode == "automatique":
@@ -154,12 +169,14 @@ class Controleur:
 
     def couleur(self):
         """Rouge prioritaire; les mesures inconnues ne peuvent pas donner vert."""
+        # pas assez d'espaces, c'est illisible
         eau = self.mesures.get("eau", {}).get("etat")
         humidite = self.mesures.get("sol", {}).get("humidite_pct")
         heures = self.heures_jour()
         sol_sec = humidite is not None and humidite < self.etat["parametres"]["humidite_min"]
         if eau == "insuffisant" or sol_sec or heures < 3.6:
             return "rouge"
+        # trop difficile à lire
         donnees_recentes = all(self.recentes(nom, age) for nom, age in (
             ("eau", 660), ("sol", 660), ("lumiere", 90)))
         if not donnees_recentes or humidite is None:
@@ -174,6 +191,7 @@ class Controleur:
 
     def mettre_a_jour(self, monotone):
         """Coupe la pompe à l'échéance et applique la couleur ou le test du feu."""
+        # pas assez d'espaces, c'est illisible
         if self.fin_pompe is not None:
             # Pendant l'arrosage, vérifier aussi le flotteur à chaque passage.
             eau = self.lire_eau()
@@ -192,6 +210,7 @@ class Controleur:
             getattr(self.feu, "allumer_" + couleur)()
 
     def commande(self, commande, monotone):
+        # pas assez d'espaces, c'est illisible
         identifiant = commande.get("id")
         if not isinstance(identifiant, str) or not 1 <= len(identifiant) <= 100:
             raise ValueError("Identifiant de commande requis.")
@@ -219,6 +238,7 @@ class Controleur:
             raise ValueError("Commande inconnue.")
 
     def statut(self):
+        # pas assez d'espaces, c'est illisible
         prochain = self.prochain_auto()
         aujourd_hui = self.maintenant().astimezone(self.zone).date()
         jours = {}

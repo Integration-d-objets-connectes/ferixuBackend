@@ -12,18 +12,25 @@ from controleur import Controleur
 from publication_donnees import PublicateurMQTT
 
 
+# ajouter les types des variables partout
+
 def creer_bus_i2c():
+    # pourquoi une fonction
     import board
     return board.I2C()
 
 
 def main():
+    # c'est quoi arret et verrou
     arret = threading.Event()
     verrou = threading.Lock()
     mesures_en_attente = []
+    # wtf is this, 1 ligne par variable
     flotteur = feu = pompe = i2c = publicateur = thread = None
 
     def emettre(nom, mesure):
+        # dur à lire
+        # [nom] sert à quoi??
         topic = {"eau": config.TOPIC_EAU, "sol": config.TOPIC_SOL,
                  "lumiere": config.TOPIC_LUMIERE, "statut": config.TOPIC_STATUT,
                  "resultat": config.TOPIC_RESULTAT}[nom]
@@ -39,6 +46,7 @@ def main():
 
     def boucle_publication():
         try:
+            # what: publie while et publie hors du while anyway
             while not arret.wait(config.PERIODE_PUBLICATION):
                 publier()
             publier()
@@ -47,18 +55,25 @@ def main():
             arret.set()
 
     try:
+        # plus de lignes vides, trop difficile à lire en ce moment
+        # beaucoup d'indentation
+        
         # Créer le relais inactif avant de démarrer la communication.
         pompe = Pompe(config.GPIO_RELAIS, config.RELAIS_ACTIF_HAUT)
         flotteur = Flotteur(config.GPIO_FLOTTEUR, config.PERIODE_LECTURE_RESERVOIR)
         feu = FeuCirculation(config.GPIO_FEU_ROUGE, config.GPIO_FEU_JAUNE, config.GPIO_FEU_VERT)
-        controleur = Controleur(config.FICHIER_ETAT, flotteur, pompe, feu, emettre,
-                                zone=config.FUSEAU_HORAIRE)
+
+        controleur = Controleur(config.FICHIER_ETAT, flotteur, pompe, feu, emettre, zone=config.FUSEAU_HORAIRE)
         publicateur = PublicateurMQTT("ferixu-publicateur")
         publicateur.connecter()
+
         thread = threading.Thread(target=boucle_publication)
         thread.start()
+
+        # pleins de variables en trop peu de lignes
         capteur_sol = capteur_lumiere = None
         prochaine_sol = prochaine_lumiere = prochain_statut = time.monotonic()
+
         while not arret.is_set():
             maintenant = time.monotonic()
             controleur.mettre_a_jour(maintenant)

@@ -10,7 +10,9 @@ from .capteur import Capteur
 
 class SoilSensor(Capteur):
     def __init__(self, i2c, periode_lecture=600, valeur_sec=None, valeur_humide=None):
+        # pas assez d'espaces, c'est illisible
         """Reçoit le bus du programme principal; couple sol toutes les 10 min."""
+        # import ici?
         from adafruit_seesaw.seesaw import Seesaw
         super().__init__("STEMMA sol", periode_lecture)
         if (valeur_sec is None) != (valeur_humide is None):
@@ -24,6 +26,7 @@ class SoilSensor(Capteur):
         self._capteur = Seesaw(i2c, addr=0x36)
 
     def lire(self) -> dict:
+        # pas assez d'espaces, c'est illisible
         """Acquiert température et capacité brute ensemble, sans inventer de %."""
         horodatage = datetime.now(timezone.utc).isoformat()
         temperature = float(self.get_temp())
@@ -47,3 +50,5 @@ class SoilSensor(Capteur):
     def get_moisture(self):
         """Lit une capacité brute; une calibration reste nécessaire pour EF01."""
         return self._capteur.moisture_read()
+
+    # pas de fonction pour avoir la mesure en %?

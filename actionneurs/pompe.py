@@ -1,7 +1,7 @@
 """Relais de la pompe : sortie inactive au démarrage et à la fermeture."""
 import threading
 
-
+# pas assez d'espaces, c'est illisible
 class Pompe:
     def __init__(self, broche=None, actif_haut=True):
         self._sortie = None
