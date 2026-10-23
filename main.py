@@ -1,4 +1,10 @@
 """Pattern du cours : acquisition/décision principales, publication dans un thread."""
+
+from __future__ import annotations
+
+from typing import Any
+from contextlib import ExitStack
+
 import threading
 import time
 from queue import Empty
@@ -12,67 +18,85 @@ from controleur import Controleur
 from publication_donnees import PublicateurMQTT
 
 
-# ajouter les types des variables partout
-
-def creer_bus_i2c():
-    # pourquoi une fonction
+def creer_bus_i2c() -> Any:
+    """Charge le pilote à la demande pour permettre une nouvelle tentative après erreur."""
     import board
+
     return board.I2C()
 
 
-def main():
-    # c'est quoi arret et verrou
+def main() -> None:
+    # Signale aux deux boucles de terminer leur travail.
     arret = threading.Event()
+    # Protège la file de mesures partagée avec le thread MQTT.
     verrou = threading.Lock()
-    mesures_en_attente = []
-    # wtf is this, 1 ligne par variable
-    flotteur = feu = pompe = i2c = publicateur = thread = None
+    mesures_en_attente: list[tuple[str, dict]] = []
+    flotteur = None
+    feu = None
+    pompe = None
+    i2c = None
+    publicateur = None
+    thread = None
 
-    def emettre(nom, mesure):
-        # dur à lire
-        # [nom] sert à quoi??
-        topic = {"eau": config.TOPIC_EAU, "sol": config.TOPIC_SOL,
-                 "lumiere": config.TOPIC_LUMIERE, "statut": config.TOPIC_STATUT,
-                 "resultat": config.TOPIC_RESULTAT}[nom]
+    topics = {
+        "eau": config.TOPIC_EAU,
+        "sol": config.TOPIC_SOL,
+        "lumiere": config.TOPIC_LUMIERE,
+        "statut": config.TOPIC_STATUT,
+        "resultat": config.TOPIC_RESULTAT,
+    }
+
+    def emettre(nom: str, mesure: dict) -> None:
+        topic = topics[nom]
         with verrou:
             mesures_en_attente.append((topic, mesure))
 
-    def publier():
+    def publier() -> None:
         with verrou:
             mesures = mesures_en_attente.copy()
             mesures_en_attente.clear()
         for topic, mesure in mesures:
             publicateur.publier(topic, mesure)
 
-    def boucle_publication():
+    def boucle_publication() -> None:
         try:
-            # what: publie while et publie hors du while anyway
             while not arret.wait(config.PERIODE_PUBLICATION):
                 publier()
+            # Dernier envoi des mesures restantes lors de l’arrêt.
             publier()
         except Exception as erreur:
             print(f"Erreur MQTT, arrêt du matériel : {erreur}")
             arret.set()
 
     try:
-        # plus de lignes vides, trop difficile à lire en ce moment
-        # beaucoup d'indentation
-        
         # Créer le relais inactif avant de démarrer la communication.
         pompe = Pompe(config.GPIO_RELAIS, config.RELAIS_ACTIF_HAUT)
         flotteur = Flotteur(config.GPIO_FLOTTEUR, config.PERIODE_LECTURE_RESERVOIR)
-        feu = FeuCirculation(config.GPIO_FEU_ROUGE, config.GPIO_FEU_JAUNE, config.GPIO_FEU_VERT)
+        feu = FeuCirculation(
+            config.GPIO_FEU_ROUGE, config.GPIO_FEU_JAUNE, config.GPIO_FEU_VERT
+        )
 
-        controleur = Controleur(config.FICHIER_ETAT, flotteur, pompe, feu, emettre, zone=config.FUSEAU_HORAIRE)
+        controleur = Controleur(
+            config.FICHIER_ETAT,
+            flotteur,
+            pompe,
+            feu,
+            emettre,
+            zone=config.FUSEAU_HORAIRE,
+        )
         publicateur = PublicateurMQTT("ferixu-publicateur")
         publicateur.connecter()
 
         thread = threading.Thread(target=boucle_publication)
         thread.start()
 
-        # pleins de variables en trop peu de lignes
-        capteur_sol = capteur_lumiere = None
-        prochaine_sol = prochaine_lumiere = prochain_statut = time.monotonic()
+        capteur_sol = None
+        capteur_lumiere = None
+
+        maintenant = time.monotonic()
+        prochaine_sol = maintenant
+        prochaine_lumiere = maintenant
+        prochain_statut = maintenant
 
         while not arret.is_set():
             maintenant = time.monotonic()
@@ -85,10 +109,24 @@ def main():
                     break
                 try:
                     controleur.commande(commande, maintenant)
-                except (ValueError, KeyError, TypeError, OSError, RuntimeError) as erreur:
-                    resultat = {"id": commande.get("id"), "succes": False, "message": str(erreur)}
+                except (
+                    ValueError,
+                    KeyError,
+                    TypeError,
+                    OSError,
+                    RuntimeError,
+                ) as erreur:
+                    resultat = {
+                        "id": commande.get("id"),
+                        "succes": False,
+                        "message": str(erreur),
+                    }
                 else:
-                    resultat = {"id": commande.get("id"), "succes": True, "message": "Commande exécutée."}
+                    resultat = {
+                        "id": commande.get("id"),
+                        "succes": True,
+                        "message": "Commande exécutée.",
+                    }
                 resultat["horodatage"] = datetime.now(timezone.utc).isoformat()
                 emettre("resultat", resultat)
                 prochain_statut = maintenant
@@ -101,8 +139,12 @@ def main():
                     if i2c is None:
                         i2c = creer_bus_i2c()
                     if capteur_sol is None:
-                        capteur_sol = SoilSensor(i2c, config.PERIODE_LECTURE_SOL,
-                                                config.HUMIDITE_BRUTE_SEC, config.HUMIDITE_BRUTE_HUMIDE)
+                        capteur_sol = SoilSensor(
+                            i2c,
+                            config.PERIODE_LECTURE_SOL,
+                            config.HUMIDITE_BRUTE_SEC,
+                            config.HUMIDITE_BRUTE_HUMIDE,
+                        )
                     controleur.recevoir("sol", capteur_sol.lire())
                 except (OSError, RuntimeError, ValueError, ImportError) as erreur:
                     controleur.erreurs["sol"] = str(erreur)
@@ -120,7 +162,9 @@ def main():
                     if i2c is None:
                         i2c = creer_bus_i2c()
                     if capteur_lumiere is None:
-                        capteur_lumiere = CapteurLumiere(i2c, config.PERIODE_LECTURE_LUMIERE)
+                        capteur_lumiere = CapteurLumiere(
+                            i2c, config.PERIODE_LECTURE_LUMIERE
+                        )
                     controleur.recevoir("lumiere", capteur_lumiere.lire())
                 except (OSError, RuntimeError, ValueError, ImportError) as erreur:
                     controleur.erreurs["lumiere"] = str(erreur)
@@ -135,30 +179,23 @@ def main():
     except KeyboardInterrupt:
         print("Arrêt de Ferixu…")
     finally:
-        # Couper la pompe avant toute attente réseau ou fermeture de capteur.
-        try:
+        # Les callbacks sont exécutés en ordre inverse, même si une fermeture échoue.
+        with ExitStack() as nettoyage:
+            if i2c is not None:
+                nettoyage.callback(i2c.deinit)
+            if feu is not None:
+                nettoyage.callback(feu.fermer)
+            if flotteur is not None:
+                nettoyage.callback(flotteur.fermer)
+            if publicateur is not None:
+                nettoyage.callback(publicateur.deconnecter)
+            if thread is not None and thread.ident is not None:
+                nettoyage.callback(thread.join)
+            nettoyage.callback(arret.set)
+
+            # Couper la pompe avant toute attente réseau ou fermeture de capteur.
             if pompe is not None:
                 pompe.fermer()
-        finally:
-            arret.set()
-            try:
-                if thread is not None and thread.ident is not None:
-                    thread.join()
-            finally:
-                try:
-                    if publicateur is not None:
-                        publicateur.deconnecter()
-                finally:
-                    try:
-                        if flotteur is not None:
-                            flotteur.fermer()
-                    finally:
-                        try:
-                            if feu is not None:
-                                feu.fermer()
-                        finally:
-                            if i2c is not None:
-                                i2c.deinit()
 
 
 if __name__ == "__main__":
