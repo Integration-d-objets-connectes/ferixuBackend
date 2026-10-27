@@ -127,6 +127,9 @@ Actions disponibles : `arroser`, `tester_pompe`, `tester_feu`, `parametres`. Le 
 
 ## Vérification
 
+La [documentation MongoDB](mongodb/README.md) regroupe le test de connexion
+et les exemples d'insertion, de lecture et de collection time series.
+
 ```bash
 python -m unittest discover -s tests -v
 ```
