@@ -1,5 +1,7 @@
 # Raspberry Pi OS : installer lgpio par apt et utiliser --system-site-packages.
 paho-mqtt>=2.1,<3
+pymongo>=4,<5
+python-dotenv>=1,<2
 gpiozero>=2,<3
 Adafruit-Blinka>=8,<10
 adafruit-circuitpython-bh1750>=1,<2

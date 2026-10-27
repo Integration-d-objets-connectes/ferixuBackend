@@ -43,10 +43,10 @@ def on_message(client, userdata, msg):
 
 if __name__ == "__main__":
     # Même démarrage explicite et mêmes callbacks que dans la démo.
-    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2,
-                         client_id="ferixu-frontend-subscriber")
+    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id="ferixu-frontend-subscriber")
     client.on_connect = on_connect
     client.on_message = on_message
+    
     try:
         DOSSIER_DONNEES.mkdir(exist_ok=True)
         client.connect(config.MQTT_HOTE, config.MQTT_PORT, 60)

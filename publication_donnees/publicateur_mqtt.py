@@ -2,6 +2,10 @@
 
 """Communication MQTT indépendante des pilotes et de l'acquisition."""
 
+from __future__ import annotations
+
+from typing import Any
+
 import json
 import threading
 from queue import Queue, Full
@@ -14,17 +18,18 @@ import config
 class PublicateurMQTT:
     """Publie les mesures horodatées sans modifier les données acquises."""
 
-    def __init__(self, client_id: str):
+    def __init__(self, client_id: str) -> None:
         self._connexion = threading.Event()
         self._erreur_connexion = None
         self.commandes = Queue(maxsize=100)
-        self._client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2,
-                                   client_id=client_id)
+        self._client = mqtt.Client(
+            mqtt.CallbackAPIVersion.VERSION2, client_id=client_id
+        )
         self._client.on_connect = self._lors_connexion
         self._client.on_disconnect = self._lors_deconnexion
         self._client.on_message = self._lors_message
 
-    def _lors_message(self, client, userdata, message):
+    def _lors_message(self, client: Any, userdata: Any, message: Any) -> None:
         # Le callback réseau ne touche jamais au matériel.
         if message.retain or message.topic != config.TOPIC_COMMANDES:
             return
@@ -35,14 +40,18 @@ class PublicateurMQTT:
         except (ValueError, UnicodeDecodeError, Full):
             print("Commande MQTT invalide ou file pleine : ignorée.")
 
-    def _lors_connexion(self, client, userdata, flags, reason_code, properties):
+    def _lors_connexion(
+        self, client: Any, userdata: Any, flags: Any, reason_code: Any, properties: Any
+    ) -> None:
         """Signale la réponse du broker, y compris un refus de connexion."""
         self._erreur_connexion = str(reason_code) if reason_code.is_failure else None
         if not reason_code.is_failure:
             client.subscribe(config.TOPIC_COMMANDES, qos=1)
         self._connexion.set()
 
-    def _lors_deconnexion(self, client, userdata, flags, reason_code, properties):
+    def _lors_deconnexion(
+        self, client: Any, userdata: Any, flags: Any, reason_code: Any, properties: Any
+    ) -> None:
         """Empêche une publication après la perte de connexion."""
         self._connexion.clear()
 
@@ -56,7 +65,9 @@ class PublicateurMQTT:
             if not self._connexion.wait(config.MQTT_DELAI_SECONDES):
                 raise TimeoutError("Le broker MQTT ne répond pas.")
             if self._erreur_connexion is not None:
-                raise ConnectionError(f"Connexion MQTT refusée : {self._erreur_connexion}")
+                raise ConnectionError(
+                    f"Connexion MQTT refusée : {self._erreur_connexion}"
+                )
         except Exception:
             self.deconnecter()
             raise
