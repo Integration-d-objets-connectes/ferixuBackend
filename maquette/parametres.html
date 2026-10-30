@@ -1,3 +1,60 @@
 <!doctype html>
-<html lang="fr-CA"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Pousse · Paramètres</title><link rel="stylesheet" href="style.css"></head>
-<body><aside><a class="brand" href="index.html"><span>✳</span> pousse<span class="brand-dot">.</span></a><p class="nav-label">VOTRE PLANTE</p><nav aria-label="Navigation principale"><a href="index.html">Vue d’ensemble</a><a href="historique.html">Historique</a><a href="arrosage.html">Arrosage</a><a href="parametres.html" aria-current="page">Paramètres</a></nav><div class="aside-bottom">Un peu d’attention,<br>au bon moment.</div></aside><main><header><span>POUSSE / PARAMÈTRES</span><span class="demo">MAQUETTE · NON CONNECTÉE</span></header><div class="heading"><div><h1>Paramètres</h1></div></div><div class="notice"><span class="notice-icon">i</span><p><strong>Aucune donnée connectée</strong><br>Connectez le système pour afficher les mesures.</p></div><div class="two section"><section class="card feature"><h2>Paramètres du système</h2><p>Valeurs disponibles après la connexion.</p><form><label>Seuil minimal d’humidité <span>%</span><input type="number" placeholder="—" disabled></label><label>Seuil de luminosité <span>lux</span><input type="number" placeholder="—" disabled></label><label>Intervalle d’arrosage <span>minutes</span><input type="number" placeholder="—" disabled></label><button class="button primary" type="button" disabled>Enregistrer les paramètres</button></form></section><section class="card feature"><h2>Tests manuels</h2><div class="test-row"><div><h3>Pompe et relais</h3><p>3 secondes maximum; eau suffisante requise.</p></div><button class="button" disabled>Tester</button></div><div class="test-row"><div><h3>Feu tricolore</h3><p>Vert, jaune, puis rouge.</p></div><button class="button" disabled>Tester</button></div></section></div><footer>Pousse · Projet Ferixu <span>Maquette non connectée au matériel</span></footer></main></body></html>
+<html lang="fr-CA">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pousse · Paramètres</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<aside>
+  <a class="brand" href="index.html"><span>✳</span> pousse<span class="brand-dot">.</span></a>
+  <p class="nav-label">VOTRE PLANTE</p>
+  <nav aria-label="Navigation principale">
+    <a href="index.html">Vue d’ensemble</a>
+    <a href="historique.html">Historique</a>
+    <a href="parametres.html" aria-current="page">Paramètres</a>
+  </nav>
+  <div class="aside-bottom">Un peu d’attention,<br>au bon moment.</div>
+</aside>
+<main>
+  <header><span>POUSSE / PARAMÈTRES</span><span class="demo">MAQUETTE · DONNÉES D’EXEMPLE</span></header>
+  <div class="heading"><div><h1>Paramètres</h1></div></div>
+
+  <div class="two section">
+    <section class="card feature">
+      <h2>Paramètres du système</h2>
+      <p>Valeurs utilisées par le système.</p>
+      <form>
+        <label>Seuil minimal d’humidité <span>%</span><input type="number" min="0" max="100" value="30"></label>
+        <label>Seuil de luminosité <span>lux</span><input type="number" min="1" max="200000" value="10000"></label>
+        <label>Durée d’arrosage <span>secondes · 3 max</span><input type="number" min="0.1" max="3" step="0.1" value="3"></label>
+        <button class="button primary" type="button">Enregistrer les paramètres</button>
+      </form>
+    </section>
+
+    <div class="settings-stack">
+      <section class="card feature">
+        <h2>Commandes</h2>
+        <div class="switch-row">
+          <div><h3>Arrosage automatique</h3><p>Arrose 3 s quand l’humidité passe sous le seuil.</p></div>
+          <div class="switch"><input type="checkbox" checked aria-label="Arrosage automatique"><span></span></div>
+        </div>
+        <div class="switch-row">
+          <div><h3>Feu tricolore</h3><p>Affiche l’état de la plante : vert, jaune ou rouge.</p></div>
+          <div class="switch"><input type="checkbox" checked aria-label="Activer le feu tricolore"><span></span></div>
+        </div>
+      </section>
+
+      <section class="card feature">
+        <h2>Arrosage manuel</h2>
+        <p>Durée : 3 secondes maximum. Refusé si le réservoir est insuffisant.</p>
+        <button class="button primary" type="button">Arroser maintenant</button>
+      </section>
+    </div>
+  </div>
+
+  <footer>Pousse · Projet Ferixu <span>Maquette non connectée au matériel · valeurs d’exemple</span></footer>
+</main>
+</body>
+</html>
