@@ -88,6 +88,19 @@ tail -f donnees/lectures_capteurs.jsonl
 
 Arrêt par `Ctrl+C`. Les valeurs de configuration restent explicites dans `config.py` pour faciliter la lecture.
 
+### Lancer la maquette Web (UI)
+
+Pour visualiser la maquette de l'application :
+
+- **Ouverture directe** : ouvrir `maquette/index.html` dans un navigateur (`open maquette/index.html` sur macOS).
+- **Via serveur local Python** :
+  ```bash
+  cd maquette
+  python3 -m http.server 8000
+  ```
+  Accéder ensuite à [http://localhost:8000](http://localhost:8000).
+
+
 ## Topics et commandes
 
 | Topic | Contenu |

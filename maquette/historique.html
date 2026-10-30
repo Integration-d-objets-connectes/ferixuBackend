@@ -1,3 +1,107 @@
 <!doctype html>
-<html lang="fr-CA"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Pousse · Historique</title><link rel="stylesheet" href="style.css"></head>
-<body><aside><a class="brand" href="index.html"><span>✳</span> pousse<span class="brand-dot">.</span></a><p class="nav-label">VOTRE PLANTE</p><nav aria-label="Navigation principale"><a href="index.html">Vue d’ensemble</a><a href="historique.html" aria-current="page">Historique</a><a href="arrosage.html">Arrosage</a><a href="parametres.html">Paramètres</a></nav><div class="aside-bottom">Un peu d’attention,<br>au bon moment.</div></aside><main><header><span>POUSSE / HISTORIQUE</span><span class="demo">MAQUETTE · NON CONNECTÉE</span></header><div class="heading"><div><h1>Historique</h1></div></div><div class="notice"><span class="notice-icon">i</span><p><strong>Aucune donnée connectée</strong><br>Connectez le système pour afficher les mesures.</p></div><section class="section"><div class="section-title"><div><h2>Historique des mesures</h2></div></div><div class="history-grid"><article class="card history-card"><h3>Humidité et température du sol</h3><p>Humidité (%) et température (°C).</p><div class="empty-chart"><span>Aucune mesure disponible.</span></div><div class="legend"><span><i class="dot green"></i>Humidité · %</span><span><i class="dot orange"></i>Température · °C</span></div></article><article class="card history-card"><h3>Luminosité</h3><p>En lux.</p><div class="empty-chart"><span>Aucune mesure disponible.</span></div></article></div></section><footer>Pousse · Projet Ferixu <span>Maquette non connectée au matériel</span></footer></main></body></html>
+<html lang="fr-CA">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pousse · Historique</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<aside>
+  <a class="brand" href="index.html"><span>✳</span> pousse<span class="brand-dot">.</span></a>
+  <p class="nav-label">VOTRE PLANTE</p>
+  <nav aria-label="Navigation principale">
+    <a href="index.html">Vue d’ensemble</a>
+    <a href="historique.html" aria-current="page">Historique</a>
+    <a href="parametres.html">Paramètres</a>
+  </nav>
+  <div class="aside-bottom">Un peu d’attention,<br>au bon moment.</div>
+</aside>
+<main>
+  <header><span>POUSSE / HISTORIQUE</span><span class="demo">MAQUETTE · DONNÉES D’EXEMPLE</span></header>
+  <div class="heading"><div><h1>Historique</h1></div></div>
+
+  <section class="section">
+    <div class="section-title"><div><h2>Historique des mesures</h2></div></div>
+    <div class="history-grid">
+
+      <!-- Graphique linéaire, deux axes (EF19) -->
+      <article class="card history-card">
+        <h3>Humidité et température du sol</h3>
+        <p>Dernières 24 heures · humidité (%) à gauche, température (°C) à droite.</p>
+        <svg class="chart" viewBox="0 0 520 240" role="img" aria-label="Courbes d’humidité et de température du sol sur 24 heures">
+          <g>
+            <line class="grid" x1="44" y1="20" x2="476" y2="20"/>
+            <line class="grid" x1="44" y1="65" x2="476" y2="65"/>
+            <line class="grid" x1="44" y1="110" x2="476" y2="110"/>
+            <line class="grid" x1="44" y1="155" x2="476" y2="155"/>
+            <line class="axis" x1="44" y1="200" x2="476" y2="200"/>
+            <line class="axis" x1="44" y1="20" x2="44" y2="200"/>
+            <line class="axis" x1="476" y1="20" x2="476" y2="200"/>
+          </g>
+          <g text-anchor="end">
+            <text x="38" y="24">100 %</text><text x="38" y="69">75 %</text><text x="38" y="114">50 %</text><text x="38" y="159">25 %</text><text x="38" y="204">0 %</text>
+          </g>
+          <g text-anchor="start">
+            <text x="482" y="24">30 °C</text><text x="482" y="69">25 °C</text><text x="482" y="114">20 °C</text><text x="482" y="159">15 °C</text><text x="482" y="204">10 °C</text>
+          </g>
+          <g text-anchor="middle">
+            <text x="44" y="222">16 h</text><text x="98" y="222">19 h</text><text x="152" y="222">22 h</text><text x="206" y="222">01 h</text><text x="260" y="222">04 h</text><text x="314" y="222">07 h</text><text x="368" y="222">10 h</text><text x="422" y="222">13 h</text><text x="476" y="222">16 h</text>
+          </g>
+          <polyline class="line-h" points="44,120.8 98,124.4 152,128 206,131.6 260,135.2 314,138.8 368,110 422,113.6 476,117.2"/>
+          <polyline class="line-t" points="44,83.9 98,97.4 152,108.2 206,114.5 260,119 314,122.6 368,102.8 422,77.6 476,88.4"/>
+        </svg>
+        <div class="legend">
+          <span><i class="line-key"></i>Humidité · %</span>
+          <span><i class="line-key dashed"></i>Température · °C</span>
+        </div>
+      </article>
+
+      <!-- Graphique à bandes (EF20) -->
+      <article class="card history-card">
+        <h3>Luminosité</h3>
+        <p>Aujourd’hui, moyenne par heure (lux). Ligne pointillée : seuil de 10 000 lux.</p>
+        <svg class="chart" viewBox="0 0 520 240" role="img" aria-label="Diagramme à bandes de la luminosité par heure aujourd’hui">
+          <g>
+            <line class="grid" x1="52" y1="20" x2="500" y2="20"/>
+            <line class="grid" x1="52" y1="65" x2="500" y2="65"/>
+            <line class="grid" x1="52" y1="110" x2="500" y2="110"/>
+            <line class="grid" x1="52" y1="155" x2="500" y2="155"/>
+            <line class="axis" x1="52" y1="200" x2="500" y2="200"/>
+            <line class="axis" x1="52" y1="20" x2="52" y2="200"/>
+          </g>
+          <g text-anchor="end">
+            <text x="46" y="24">16 000</text><text x="46" y="69">12 000</text><text x="46" y="114">8 000</text><text x="46" y="159">4 000</text><text x="46" y="204">0</text>
+          </g>
+          <g>
+            <rect class="bar low" x="63" y="195.5" width="26" height="4.5" rx="3"/>
+            <rect class="bar low" x="103" y="176.4" width="26" height="23.6" rx="3"/>
+            <rect class="bar low" x="143" y="137" width="26" height="63" rx="3"/>
+            <rect class="bar low" x="183" y="92" width="26" height="108" rx="3"/>
+            <rect class="bar" x="223" y="66.1" width="26" height="133.9" rx="3"/>
+            <rect class="bar" x="263" y="44.7" width="26" height="155.3" rx="3"/>
+            <rect class="bar" x="303" y="29" width="26" height="171" rx="3"/>
+            <rect class="bar" x="343" y="35.7" width="26" height="164.3" rx="3"/>
+            <rect class="bar" x="383" y="43.6" width="26" height="156.4" rx="3"/>
+            <rect class="bar" x="423" y="54.9" width="26" height="145.1" rx="3"/>
+            <rect class="bar today" x="463" y="59.6" width="26" height="140.4" rx="3"/>
+          </g>
+          <line class="goal" x1="52" y1="87.5" x2="500" y2="87.5"/>
+          <text class="goal-label" x="56" y="81">Seuil 10 000 lux</text>
+          <g text-anchor="middle">
+            <text x="76" y="222">06 h</text><text x="116" y="222">07 h</text><text x="156" y="222">08 h</text><text x="196" y="222">09 h</text><text x="236" y="222">10 h</text><text x="276" y="222">11 h</text><text x="316" y="222">12 h</text><text x="356" y="222">13 h</text><text x="396" y="222">14 h</text><text x="436" y="222">15 h</text><text x="476" y="222">16 h</text>
+          </g>
+        </svg>
+        <div class="legend">
+          <span><i class="bar-key"></i>Lumière suffisante</span>
+          <span><i class="bar-key low"></i>Sous le seuil</span>
+        </div>
+      </article>
+
+    </div>
+  </section>
+
+  <footer>Pousse · Projet Ferixu <span>Maquette non connectée au matériel · valeurs d’exemple</span></footer>
+</main>
+</body>
+</html>
