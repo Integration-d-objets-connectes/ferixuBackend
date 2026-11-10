@@ -1,5 +1,5 @@
 # @author Félix Lachapelle
-# @author Éric Lachapelle
+# @author Éric
 
 """Pilote STEMMA Soil Sensor selon la classe Capteur de la démo du cours."""
 

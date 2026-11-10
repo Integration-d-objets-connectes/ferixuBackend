@@ -1,4 +1,4 @@
-# @author Éric Lachapelle
+# @author Éric
 
 """Abonnement et fichier JSONL, selon le service d'ingestion de la démo du cours."""
 import json

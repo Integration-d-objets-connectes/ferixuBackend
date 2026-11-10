@@ -1,5 +1,5 @@
 # @author Félix Lachapelle
-# @author Éric Lachapelle
+# @author Éric
 
 import json
 import time

@@ -1,4 +1,4 @@
-# @author Éric Lachapelle
+# @author Éric
 
 """Lecture du flotteur : contact fermé = niveau insuffisant, à valider sur le Pi."""
 

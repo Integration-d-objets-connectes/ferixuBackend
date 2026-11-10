@@ -1,4 +1,4 @@
 # @author Félix Lachapelle
-# @author Éric Lachapelle
+# @author Éric
 
 """Paquet ingestion du Raspberry Pi."""

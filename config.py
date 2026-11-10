@@ -1,5 +1,5 @@
 # @author Félix Lachapelle
-# @author Éric Lachapelle
+# @author Éric
 
 """Configuration centrale du Raspberry Pi, broches en numérotation BCM."""
 from pathlib import Path
