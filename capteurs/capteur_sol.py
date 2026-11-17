@@ -13,6 +13,7 @@ from .capteur import Capteur
 
 
 class SoilSensor(Capteur):
+    """Acquiert la température et l'humidité du sol avec un capteur STEMMA."""
     def __init__(
         self,
         i2c: Any,

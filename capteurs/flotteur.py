@@ -13,7 +13,14 @@ from .capteur import Capteur
 
 
 class Flotteur(Capteur):
+    """Lit le niveau du réservoir à partir du contact du flotteur."""
     def __init__(self, pin_flotteur: int = 16, periode_lecture: float = 600) -> None:
+        """Configure le contact GPIO et la période de lecture du flotteur.
+
+        Args:
+            pin_flotteur (int): Broche GPIO du contact du flotteur.
+            periode_lecture (float): Période de lecture prévue en secondes.
+        """
         super().__init__("réservoir", periode_lecture)
         self.bouton = Button(pin_flotteur)
 

@@ -12,6 +12,7 @@ from .capteur import Capteur
 
 
 class CapteurLumiere(Capteur):
+    """Acquiert la luminosité à partir du capteur BH1750."""
     def __init__(self, i2c: Any, periode_lecture: float = 60) -> None:
         """Reçoit le bus du programme principal; période prévue par EF03 : 60 s."""
         # Import différé : permet au programme de gérer un pilote indisponible.

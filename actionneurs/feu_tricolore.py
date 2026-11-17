@@ -5,6 +5,7 @@ from gpiozero import TrafficLights
 
 
 class FeuCirculation:
+    """Pilote les trois couleurs du feu sur les broches GPIO."""
     def __init__(self, pin_rouge, pin_jaune, pin_vert):
         """Réserve les GPIO à la création de l'instance, feu initialement éteint."""
         self._feu = TrafficLights(red=pin_rouge, amber=pin_jaune, green=pin_vert)

@@ -14,6 +14,7 @@ from pathlib import Path
 
 @dataclass(frozen=True)
 class LectureLumiere:
+    """Conserve une lecture de luminosité et son horodatage."""
     horodatage: datetime
     lux: float
 
@@ -28,6 +29,14 @@ class ErreurPersistance(Exception):
 
 
 def charger_etat(chemin: str | Path) -> dict:
+    """Charge et valide l'état persistant, ou crée les valeurs initiales.
+
+    Args:
+        chemin (str | Path): Chemin du fichier d'état.
+
+    Returns:
+        dict: État chargé ou état initial.
+    """
     chemin = Path(chemin)
     if not chemin.exists():
         return {
@@ -54,6 +63,11 @@ def charger_etat(chemin: str | Path) -> dict:
 
 
 def valider_parametres(p: dict) -> None:
+    """Vérifie les plages des paramètres et le type du mode automatique.
+
+    Args:
+        p (dict): Paramètres à valider.
+    """
     for cle, mini, maxi in (
         ("humidite_min", 0, 100),
         ("lux_min", 1, 200000),
@@ -72,6 +86,7 @@ def valider_parametres(p: dict) -> None:
 
 
 class Controleur:
+    """Coordonne les mesures, les commandes et les règles de sécurité du système."""
     def __init__(
         self,
         chemin: str | Path,
@@ -82,6 +97,17 @@ class Controleur:
         maintenant: Callable[[], datetime] = utc,
         zone: str = "America/Toronto",
     ) -> None:
+        """Initialise le contrôleur, ses périphériques et son état persistant.
+
+        Args:
+            chemin (str | Path): Chemin du fichier d'état.
+            flotteur (Any): Capteur du niveau du réservoir.
+            pompe (Any): Actionneur de la pompe.
+            feu (Any): Actionneur du feu tricolore.
+            emettre (Callable[[str, dict], None]): Fonction qui transmet les événements.
+            maintenant (Callable[[], datetime]): Fonction fournissant la date et l’heure courantes.
+            zone (str): Nom du fuseau horaire local.
+        """
         self.chemin = Path(chemin)
         self.etat = charger_etat(chemin)
         self.flotteur = flotteur
@@ -100,6 +126,7 @@ class Controleur:
         self.erreurs: dict[str, str] = {}
 
     def sauvegarder(self) -> None:
+        """Enregistre l'état par remplacement de fichier; signale toute erreur de persistance."""
         try:
             self.chemin.parent.mkdir(parents=True, exist_ok=True)
             temporaire = self.chemin.with_suffix(".tmp")
@@ -113,6 +140,12 @@ class Controleur:
             ) from erreur
 
     def recevoir(self, nom: str, mesure: dict) -> None:
+        """Enregistre et émet une mesure, en cumulant la lumière par journée locale.
+
+        Args:
+            nom (str): Nom de la variable, de la mesure ou du capteur.
+            mesure (dict): Mesure à enregistrer ou à afficher.
+        """
         self.mesures[nom] = mesure
         self.erreurs.pop(nom, None)
 
@@ -148,6 +181,11 @@ class Controleur:
         self.emettre(nom, mesure)
 
     def lire_eau(self) -> bool:
+        """Lit le flotteur et renvoie si le niveau est suffisant et cohérent.
+
+        Returns:
+            bool: True si le niveau est suffisant et cohérent.
+        """
         try:
             mesure = self.flotteur.lire()
             etat = mesure.get("etat")
@@ -164,6 +202,15 @@ class Controleur:
             return False
 
     def recentes(self, nom: str, age: float) -> bool:
+        """Indique si la dernière mesure valide est âgée d'au plus age secondes.
+
+        Args:
+            nom (str): Nom de la variable, de la mesure ou du capteur.
+            age (float): Âge maximal de la mesure en secondes.
+
+        Returns:
+            bool: True si la mesure est valide et assez récente.
+        """
         mesure = self.mesures.get(nom)
         if not mesure or nom in self.erreurs:
             return False
@@ -173,6 +220,11 @@ class Controleur:
         return 0 <= secondes <= age
 
     def arrosages_recents(self) -> list[dict]:
+        """Renvoie les arrosages enregistrés durant les dernières 24 heures.
+
+        Returns:
+            list[dict]: Arrosages enregistrés durant les dernières 24 heures.
+        """
         limite = self.maintenant() - timedelta(hours=24)
         return [
             a
@@ -181,6 +233,11 @@ class Controleur:
         ]
 
     def prochain_auto(self) -> datetime | None:
+        """Renvoie la prochaine heure permise après un arrosage automatique.
+
+        Returns:
+            datetime | None: Prochaine heure permise, ou None sans arrosage automatique.
+        """
         autos = [a for a in self.etat["arrosages"] if a["mode"] == "automatique"]
         if not autos:
             return None
@@ -229,6 +286,13 @@ class Controleur:
         except Exception:
             self.pompe.eteindre()
             raise
+        self.emettre(
+            "arrosage",
+            {
+                "auto": mode == "automatique",
+                "horodatage": self.etat["arrosages"][-1]["horodatage"],
+            },
+        )
         return True
 
     def couleur(self) -> str:
@@ -252,6 +316,11 @@ class Controleur:
         return "jaune"
 
     def heures_jour(self) -> float:
+        """Renvoie les heures de lumière cumulées pour la journée locale.
+
+        Returns:
+            float: Nombre d’heures de lumière cumulées aujourd’hui.
+        """
         jour = str(self.maintenant().astimezone(self.zone).date())
         return self.etat["lumiere_jours"].get(jour, 0) / 3600
 
@@ -277,6 +346,12 @@ class Controleur:
             getattr(self.feu, "allumer_" + couleur)()
 
     def commande(self, commande: dict, monotone: float) -> None:
+        """Valide et exécute une commande récente et non encore traitée.
+
+        Args:
+            commande (dict): Commande à valider et à exécuter.
+            monotone (float): Temps monotone actuel en secondes.
+        """
         identifiant = commande.get("id")
         if not isinstance(identifiant, str) or not 1 <= len(identifiant) <= 100:
             raise ValueError("Identifiant de commande requis.")
@@ -307,6 +382,11 @@ class Controleur:
             raise ValueError("Commande inconnue.")
 
     def statut(self) -> dict:
+        """Construit un instantané indépendant de l’état actuel du système.
+
+        Returns:
+            dict: Copie indépendante du statut du système.
+        """
         prochain = self.prochain_auto()
         aujourd_hui = self.maintenant().astimezone(self.zone).date()
         jours = {}

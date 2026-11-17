@@ -19,6 +19,11 @@ class PublicateurMQTT:
     """Publie les mesures horodatées sans modifier les données acquises."""
 
     def __init__(self, client_id: str) -> None:
+        """Configure le client MQTT et la file des commandes entrantes.
+
+        Args:
+            client_id (str): Identifiant du client MQTT.
+        """
         self._connexion = threading.Event()
         self._erreur_connexion = None
         self.commandes = Queue(maxsize=100)
@@ -31,6 +36,13 @@ class PublicateurMQTT:
 
     def _lors_message(self, client: Any, userdata: Any, message: Any) -> None:
         # Le callback réseau ne touche jamais au matériel.
+        """Place les commandes MQTT valides et non retenues dans la file.
+
+        Args:
+            client (Any): Client MQTT ayant reçu le message.
+            userdata (Any): Données utilisateur associées au client MQTT.
+            message (Any): Message MQTT reçu.
+        """
         if message.retain or message.topic != config.TOPIC_COMMANDES:
             return
         try:

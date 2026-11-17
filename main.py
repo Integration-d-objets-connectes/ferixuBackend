@@ -27,6 +27,7 @@ def creer_bus_i2c() -> Any:
 
 def main() -> None:
     # Signale aux deux boucles de terminer leur travail.
+    """Initialise le matériel et exécute les boucles d'acquisition et de publication."""
     arret = threading.Event()
     # Protège la file de mesures partagée avec le thread MQTT.
     verrou = threading.Lock()
@@ -44,14 +45,22 @@ def main() -> None:
         "lumiere": config.TOPIC_LUMIERE,
         "statut": config.TOPIC_STATUT,
         "resultat": config.TOPIC_RESULTAT,
+        "arrosage": config.TOPIC_ARROSAGE,
     }
 
     def emettre(nom: str, mesure: dict) -> None:
+        """Ajoute une mesure identifiée à la file de publication.
+
+        Args:
+            nom (str): Nom de la variable, de la mesure ou du capteur.
+            mesure (dict): Mesure à enregistrer ou à afficher.
+        """
         topic = topics[nom]
         with verrou:
-            mesures_en_attente.append((topic, mesure))
+            mesures_en_attente.append((topic, {**mesure, "plante_id": config.PLANTE_ID}))
 
     def publier() -> None:
+        """Publie les mesures en attente auprès du courtier MQTT."""
         with verrou:
             mesures = mesures_en_attente.copy()
             mesures_en_attente.clear()
@@ -59,6 +68,8 @@ def main() -> None:
             publicateur.publier(topic, mesure)
 
     def boucle_publication() -> None:
+        """Publie périodiquement les mesures jusqu'à la demande d'arrêt.
+        """
         try:
             while not arret.wait(config.PERIODE_PUBLICATION):
                 publier()

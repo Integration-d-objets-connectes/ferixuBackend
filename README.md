@@ -2,7 +2,7 @@
 
 **Auteurs : Éric et Félix Lachapelle** — Système d’irrigation sur Raspberry Pi 4.
 
-Le backend lit le sol, la lumière et le réservoir, applique les règles d’arrosage et commande le feu. Les mesures sont horodatées en UTC, transmises par MQTT et enregistrées en JSONL. Aucune interface NiceGUI n’est incluse dans ce dépôt. MQTTX n’est pas nécessaire.
+Le backend lit le sol, la lumière et le réservoir, applique les règles d’arrosage et commande le feu. Les mesures sont horodatées en UTC, transmises par MQTT et enregistrées en JSONL et dans MongoDB. Aucune interface NiceGUI n’est incluse dans ce dépôt. MQTTX n’est pas nécessaire.
 
 ## Structure simple
 
@@ -12,7 +12,7 @@ Structure inspirée de la [démo du cours](https://github.com/5P0-Integration-d-
 - `controleur.py` : règles d’arrosage, couleur du feu, cumul lumineux et paramètres persistants.
 - `capteurs/`, `actionneurs/` : pilotes du matériel.
 - `publication_donnees/` : connexion, publication et réception des commandes MQTT. Le callback réseau ajoute les commandes à une file; il ne commande pas le matériel.
-- `ingestion/service_ingestion.py` : réception et enregistrement dans `donnees/lectures_capteurs.jsonl`.
+- `ingestion/service_ingestion.py` : réception, historiques MongoDB (`Lumiere`, `Temperature_humidite`, `Arrosage`), mise à jour de `Plante` et enregistrement dans `donnees/lectures_capteurs.jsonl`.
 
 ## Règles du backend
 
@@ -66,6 +66,9 @@ python -m pip install -r requirements.txt
 
 ## Lancement
 
+Renseigner `MONGODB_URI`, `MONGODB_BASE` et `PLANTE_ID` dans `.env`, à partir de
+`.env.example`, avant de lancer l'ingestion. Voir la [configuration MongoDB](mongodb/README.md).
+
 Dans deux terminaux depuis le projet :
 
 ```bash
@@ -111,6 +114,11 @@ Pour visualiser la maquette de l'application :
 | `ferixu/statut` | Dernières mesures, erreurs, paramètres appliqués, couleur, cumuls et informations d’arrosage |
 | `ferixu/commandes` | Commandes JSON reçues par le backend |
 | `ferixu/resultat` | `id`, `succes`, `message`, `horodatage` après traitement d’une commande |
+| `ferixu/arrosage` | `auto`, `horodatage` après le démarrage réussi de la pompe |
+
+Les messages publiés par ce Raspberry Pi incluent aussi `plante_id`, défini par
+`PLANTE_ID` dans `.env`. Les résultats des commandes restent destinés au client;
+l'ingestion ne les enregistre pas dans une collection séparée.
 
 Chaque commande demande un `id` unique et un `horodatage` UTC récent (30 s maximum). Ne pas utiliser de message retained pour les commandes. Les doublons récents sont refusés. `succes` confirme le traitement/démarrage, pas la présence d’un débit d’eau mesuré.
 
@@ -144,6 +152,7 @@ La [documentation MongoDB](mongodb/README.md) regroupe le test de connexion
 et les exemples d'insertion, de lecture et de collection time series.
 
 ```bash
+python -m pip install -r requirements-dev.txt
 python -m unittest discover -s tests -v
 ```
 

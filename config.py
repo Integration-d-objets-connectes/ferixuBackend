@@ -13,12 +13,27 @@ load_dotenv(RACINE / ".env")
 
 
 def _lecture_env(nom):
+    """Lit une variable d'environnement ou renvoie une chaîne vide.
+
+    Args:
+        nom (str): Nom de la variable, de la mesure ou du capteur.
+
+    Returns:
+        str: Valeur de la variable ou chaîne vide.
+    """
     return getenv(nom, "")
 
 
 # ---- MongoDB ---- #
 MONGODB_URI = _lecture_env("MONGODB_URI")
 MONGODB_BASE = _lecture_env("MONGODB_BASE")
+MONGODB_COLLECTION_LUMIERE = getenv("MONGODB_COLLECTION_LUMIERE", "Lumiere")
+MONGODB_COLLECTION_TEMPERATURE_HUMIDITE = getenv(
+    "MONGODB_COLLECTION_TEMPERATURE_HUMIDITE", "Temperature_humidite"
+)
+MONGODB_COLLECTION_ARROSAGE = getenv("MONGODB_COLLECTION_ARROSAGE", "Arrosage")
+MONGODB_COLLECTION_PLANTE = getenv("MONGODB_COLLECTION_PLANTE", "Plante")
+PLANTE_ID = int(getenv("PLANTE_ID", "1"))
 
 MQTT_HOTE = "localhost"
 MQTT_PORT = 1883
@@ -57,3 +72,4 @@ FICHIER_ETAT = RACINE / "donnees" / "etat.json"
 TOPIC_COMMANDES = "ferixu/commandes"
 TOPIC_STATUT = "ferixu/statut"
 TOPIC_RESULTAT = "ferixu/resultat"
+TOPIC_ARROSAGE = "ferixu/arrosage"
