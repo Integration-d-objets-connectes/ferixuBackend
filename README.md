@@ -8,8 +8,7 @@ Le backend lit le sol, la lumière et le réservoir, applique les règles d’ar
 
 Structure inspirée de la [démo du cours](https://github.com/5P0-Integration-d-objets-connectes/demo-broker-thread) et des [notes sur les threads](https://cours-5.gitbook.io/420-5p0-integration-dobjets-connectes/iot/exemple-utilisationn-threads) :
 
-- `main.py` : lecture des capteurs, traitement des commandes et décision dans le thread principal; publication dans un thread séparé avec `Lock` et `Event`.
-- `controleur.py` : règles d’arrosage, couleur du feu, cumul lumineux et paramètres persistants.
+- `main.py` : lecture des capteurs, traitement des commandes, règles d’arrosage et du feu, cumul lumineux et persistance des paramètres dans le thread principal. La publication tourne dans un thread séparé avec `Lock` et `Event`.
 - `capteurs/`, `actionneurs/` : pilotes du matériel.
 - `models/` : modèle pydantic `Configuration`, validation des paramètres sur le Pi.
 - `publication_donnees/` : connexion et publication MQTT (`PublicateurMQTT`).
@@ -180,7 +179,7 @@ Responsables tirés des mentions `@author` du code. À compléter par l’équip
 | Pilote du sol STEMMA et calibration (`capteurs/capteur_sol.py`) | Félix Lachapelle, Éric |
 | Flotteur (`capteurs/flotteur.py`) et feu tricolore (`actionneurs/feu_tricolore.py`) | Éric |
 | Pompe et relais (`actionneurs/pompe.py`) | Félix Lachapelle, Éric |
-| Règles d’arrosage et du feu (`controleur.py`), boucle principale (`main.py`) | Félix Lachapelle, Éric |
+| Règles d’arrosage et du feu, boucle principale (`main.py`) | Félix Lachapelle, Éric |
 | Publication MQTT (`publication_donnees/`), réception MQTT (`reception_donnees/`), validation pydantic (`models/`) | Félix Lachapelle |
 | Service d’ingestion MongoDB (`ingestion/service_ingestion.py`) | Éric, Félix Lachapelle |
 | Configuration (`config.py`, `.env.example`) | Félix Lachapelle, Éric |
