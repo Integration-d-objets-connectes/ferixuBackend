@@ -10,6 +10,20 @@
 
 Ces documents décrivent le système prévu. L’état actuel de l’implémentation est présenté dans le [README du dépôt](../README.md).
 
+## Responsabilités selon le schéma de remise
+
+| Composant | Exemple de la prof | Structure Ferixu | Responsabilité prévue |
+| --- | --- | --- | --- |
+| Raspberry Pi | `demo-broker-thread` | `ferixuBackend/main.py`, `capteurs/`, `controleur.py`, `actionneurs/`, `publication_donnees/`, `reception_donnees/` | Acquiert les mesures, décide des actions, commande la pompe et le feu, publie les mesures et reçoit la configuration via EMQX. |
+| EMQX | `demo-broker-thread` | Configuration MQTT des applications | Relaie les messages entre le Pi, l’ingestion et NiceGUI. |
+| Service d’ingestion | `demo-broker-thread/ingestion` | `ferixuBackend/ingestion/service_ingestion.py` | Tourne sur un serveur, reçoit les mesures et événements via EMQX et les enregistre dans MongoDB Atlas. |
+| FastAPI | `api-iot` | [`ferixuFastApi`](../../ferixuFastApi/README.md), avec `main_api.py`, `models/`, `base_donnees/` et `publication_donnees/` | Fournit à NiceGUI les historiques lus dans MongoDB Atlas. |
+| NiceGUI | `client-iot` | [`ferixuFront`](../../ferixuFront/README.md), avec `main.py`, `layout.py`, `pages/`, `composants/` et `models/` | Charge les historiques auprès de FastAPI. Écoute les mises à jour et envoie les commandes au Pi via EMQX. |
+
+Comme dans `api-iot`, FastAPI dispose déjà de routes qui relaient les commandes vers EMQX. Dans le code NiceGUI actuel, les pages lisent FastAPI à l’ouverture. L’abonnement au direct et le branchement des commandes côté client restent à faire pour compléter le circuit du diagramme.
+
+[Schéma de la remise finale, page 2](Remise%20finale%20du%20projet.docx.pdf)
+
 ## Composants et utilité
 
 | Nº | Composant | Type | Utilité |

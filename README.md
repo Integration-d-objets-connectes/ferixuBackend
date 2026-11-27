@@ -4,16 +4,21 @@
 
 Le backend lit le sol, la lumière et le réservoir, applique les règles d’arrosage et commande le feu. Les mesures sont horodatées en UTC, transmises par MQTT et enregistrées en JSONL et dans MongoDB. Aucune interface NiceGUI n’est incluse dans ce dépôt. MQTTX n’est pas nécessaire.
 
-## Structure simple
+## Structure du Raspberry Pi et de l’ingestion
 
 Structure inspirée de la [démo du cours](https://github.com/5P0-Integration-d-objets-connectes/demo-broker-thread) et des [notes sur les threads](https://cours-5.gitbook.io/420-5p0-integration-dobjets-connectes/iot/exemple-utilisationn-threads) :
 
-- `main.py` : lecture des capteurs, traitement des commandes, règles d’arrosage et du feu, cumul lumineux et persistance des paramètres dans le thread principal. La publication tourne dans un thread séparé avec `Lock` et `Event`.
-- `capteurs/`, `actionneurs/` : pilotes du matériel.
+- `main.py` : initialise le Pi, fait tourner la boucle principale et démarre le thread de publication avec `Lock` et `Event`.
+- `capteurs/acquisition.py` : planifie les lectures du sol, du réservoir et de la lumière avec les pilotes du dossier `capteurs/`.
+- `controleur.py` : applique les règles d’arrosage et du feu, traite les commandes, cumule la lumière et conserve l’état local. Il utilise les pilotes du dossier `actionneurs/`.
 - `models/` : modèle pydantic `Configuration`, validation des paramètres sur le Pi.
 - `publication_donnees/` : connexion et publication MQTT (`PublicateurMQTT`).
 - `reception_donnees/` : réception des commandes MQTT (`AbonneMQTT`). Le callback réseau ajoute les commandes à une file; il ne commande pas le matériel.
 - `ingestion/service_ingestion.py` : réception, historiques MongoDB (`Lumiere`, `Temperature_humidite`, `Arrosage`), mise à jour de `Plante` et enregistrement dans `donnees/lectures_capteurs.jsonl`.
+
+Le `main.py` de la prof lit directement un capteur. Ici, `Acquisition` gère deux échéances (sol et réservoir aux 600 s, lumière aux 60 s), ouvre le bus I²C partagé à la première lecture et retente l’initialisation après une erreur. Les pilotes restent dans `capteurs/` et les décisions dans `controleur.py`.
+
+Les deux autres applications ont leur propre point d’entrée, environnement et README. Le [tableau des responsabilités](documentation/README.md#responsabilités-selon-le-schéma-de-remise) les associe aux exemples du cours et au diagramme de remise.
 
 ## Règles du backend
 
@@ -72,7 +77,7 @@ Renseigner `MONGODB_URI`, `MONGODB_BASE` et `PLANTE_ID` dans `.env`, à partir d
 Renseigner aussi le broker EMQX : `BROKER`, `PORT`, `USERNAME` et `PASSWORD`. Le certificat
 `emqxsl-ca.crt` doit être à la racine du projet (connexion TLS, comme dans la démo du cours).
 
-Dans deux terminaux depuis le projet :
+Pour un essai local, lancer l’ingestion puis la collecte dans deux terminaux. Pour le déploiement du diagramme, exécuter l’ingestion sur le serveur et lancer `main.py` sur le Raspberry Pi. Les deux processus utilisent le même broker EMQX.
 
 ```bash
 # Terminal 1 : abonnement et enregistrement
@@ -179,7 +184,7 @@ Responsables tirés des mentions `@author` du code. À compléter par l’équip
 | Pilote du sol STEMMA et calibration (`capteurs/capteur_sol.py`) | Félix Lachapelle, Éric |
 | Flotteur (`capteurs/flotteur.py`) et feu tricolore (`actionneurs/feu_tricolore.py`) | Éric |
 | Pompe et relais (`actionneurs/pompe.py`) | Félix Lachapelle, Éric |
-| Règles d’arrosage et du feu, boucle principale (`main.py`) | Félix Lachapelle, Éric |
+| Acquisition périodique, règles d’arrosage et du feu, boucle principale (`capteurs/acquisition.py`, `controleur.py`, `main.py`) | Félix Lachapelle, Éric |
 | Publication MQTT (`publication_donnees/`), réception MQTT (`reception_donnees/`), validation pydantic (`models/`) | Félix Lachapelle |
 | Service d’ingestion MongoDB (`ingestion/service_ingestion.py`) | Éric, Félix Lachapelle |
 | Configuration (`config.py`, `.env.example`) | Félix Lachapelle, Éric |
@@ -190,4 +195,5 @@ Responsables tirés des mentions `@author` du code. À compléter par l’équip
 | --- | --- | --- |
 | Aligner la structure du backend sur la démo du cours (`demo-broker-thread`) | Démo du cours, code du projet, `documentation/` | Ajout de `reception_donnees/AbonneMQTT` et de `models/Configuration`, connexion TLS à EMQX. Première version trop refactorisée : l’équipe a demandé de garder la logique, les commentaires et les auteurs d’origine. |
 | Vérifier le projet selon la grille de la remise finale | `Remise finale du projet.docx.pdf` | Docstrings manquantes ajoutées, période du sol remise à 600 s (EF01), commentaires et README corrigés. |
+| Alléger le point d’entrée du Pi (Codex) | `ExempleProf/demo-broker-thread/main.py`, `service_ingestion.py`, schéma et grille de la remise | Acquisition et décisions extraites de `main.py`. Sections et docstrings harmonisées. Les commandes JSON qui ne sont pas des objets sont ignorées. |
 | Créer l’API FastAPI et adapter l’ingestion pour l’historique | Exemples du cours (`api-iot`, `client-iot`, `demo-broker-thread`), `Remise finale du projet.docx.pdf`, `documentation/`, code du backend et du front | API `ferixuFastApi` (historique MongoDB, configuration et commandes MQTT, tests). Ingestion : horodatage d’acquisition du Pi, `humidite_pct`, collection `evenements` (état, configuration, commandes). Pi : topic retenu `ferixu/configuration`, `mode`/`duree` des arrosages. À réviser par l’équipe. |

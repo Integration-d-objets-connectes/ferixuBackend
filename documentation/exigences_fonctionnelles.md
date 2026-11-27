@@ -81,7 +81,7 @@ Cette section distingue les règles implémentées des écrans à réaliser. Les
 | Exigences | Implémentation backend | Limite / interface restante |
 | --- | --- | --- |
 | EF01–EF02 | Sol acquis ensemble toutes les 600 s et envoyé sur `ferixu/sol` | Configurer la calibration pour obtenir les %; sinon `humidite_pct` vaut `null` |
-| EF03–EF04 | Lux toutes les 60 s, cumul au seuil et répartition par jour dans `main.py` | Cumul estimé entre mesures valides, aucune durée ajoutée pendant une interruption > 90 s |
+| EF03–EF04 | Lux toutes les 60 s dans `capteurs/acquisition.py`, cumul au seuil et répartition par jour dans `controleur.py` | Cumul estimé entre mesures valides, aucune durée ajoutée pendant une interruption > 90 s |
 | EF05 | Eau lue avec le sol, avant/après l’arrosage et pendant la pompe | Valider le sens du contact sur le montage |
 | EF06–EF09 | Conditions automatiques, coupure ≤ 3 s, attente de 30 min après la fin, maximum de 6 sur 24 h glissantes | Mode automatique désactivé par défaut; configurer le relais |
 | EF10–EF13 | Priorité rouge, jaune, vert et retour à la couleur calculée | Données nécessaires manquantes : état inconnu/feu éteint si aucun rouge connu |
