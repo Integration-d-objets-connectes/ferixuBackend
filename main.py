@@ -10,7 +10,7 @@ from contextlib import ExitStack
 
 import threading
 import time
-from queue import Empty
+from queue import Empty, Queue
 from datetime import datetime, timezone
 
 import config
@@ -19,6 +19,7 @@ from actionneurs import FeuCirculation
 from actionneurs.pompe import Pompe
 from controleur import Controleur
 from publication_donnees import PublicateurMQTT
+from reception_donnees import AbonneMQTT
 
 
 def creer_bus_i2c() -> Any:
@@ -40,7 +41,10 @@ def main() -> None:
     pompe = None
     i2c = None
     publicateur = None
+    abonne = None
     thread = None
+    # Commandes reçues par l'abonné, lues par la boucle principale.
+    commandes = Queue()
 
     topics = {
         "eau": config.TOPIC_EAU,
@@ -101,6 +105,10 @@ def main() -> None:
         publicateur = PublicateurMQTT("ferixu-publicateur")
         publicateur.connecter()
 
+        # Le callback (thread de paho) ajoute seulement la commande à la file.
+        abonne = AbonneMQTT("ferixu-abonne", config.TOPIC_COMMANDES, commandes.put)
+        abonne.connecter()
+
         thread = threading.Thread(target=boucle_publication)
         thread.start()
 
@@ -118,7 +126,7 @@ def main() -> None:
             # Les commandes attendent le thread principal; aucune activation depuis Paho.
             for _ in range(10):
                 try:
-                    commande = publicateur.commandes.get_nowait()
+                    commande = commandes.get_nowait()
                 except Empty:
                     break
                 try:
@@ -203,6 +211,9 @@ def main() -> None:
                 nettoyage.callback(flotteur.fermer)
             if publicateur is not None:
                 nettoyage.callback(publicateur.deconnecter)
+            # L'abonné avant le publicateur, comme dans la démo.
+            if abonne is not None:
+                nettoyage.callback(abonne.deconnecter)
             if thread is not None and thread.ident is not None:
                 nettoyage.callback(thread.join)
             nettoyage.callback(arret.set)

@@ -12,32 +12,39 @@ RACINE = Path(__file__).resolve().parent
 load_dotenv(RACINE / ".env")
 
 
-def _lecture_env(nom):
-    """Lit une variable d'environnement ou renvoie une chaîne vide.
+def _lecture_env(nom: str) -> str:
+    """Lit une variable d'environnement obligatoire, comme dans la démo du cours.
 
     Args:
-        nom (str): Nom de la variable, de la mesure ou du capteur.
+        nom (str): Nom de la variable dans le fichier .env.
+
+    Raises:
+        RuntimeError: Si la variable est absente ou vide.
 
     Returns:
-        str: Valeur de la variable ou chaîne vide.
+        str: Valeur de la variable.
     """
-    return getenv(nom, "")
+    valeur = getenv(nom)
+    if not valeur:
+        raise RuntimeError(f"Variable d'environnement manquante : {nom}")
+
+    return valeur
 
 
-# ---- MongoDB ---- #
-MONGODB_URI = _lecture_env("MONGODB_URI")
-MONGODB_BASE = _lecture_env("MONGODB_BASE")
-MONGODB_COLLECTION_LUMIERE = getenv("MONGODB_COLLECTION_LUMIERE", "Lumiere")
-MONGODB_COLLECTION_TEMPERATURE_HUMIDITE = getenv(
-    "MONGODB_COLLECTION_TEMPERATURE_HUMIDITE", "Temperature_humidite"
-)
-MONGODB_COLLECTION_ARROSAGE = getenv("MONGODB_COLLECTION_ARROSAGE", "Arrosage")
-MONGODB_COLLECTION_PLANTE = getenv("MONGODB_COLLECTION_PLANTE", "Plante")
+# ---- MongoDB (service d'ingestion seulement) ---- #
+# Lues sans erreur ici : le Pi n'en a pas besoin. L'ingestion vérifie leur présence.
+MONGODB_URI = getenv("MONGODB_URI", "")
+MONGODB_BASE = getenv("MONGODB_BASE", "")
 PLANTE_ID = int(getenv("PLANTE_ID", "1"))
 
-MQTT_HOTE = "localhost"
-MQTT_PORT = 1883
-MQTT_DELAI_SECONDES = 10
+# ---- Broker MQTT (EMQX), comme dans la démo du cours ---- #
+MQTT_HOTE = _lecture_env("BROKER")
+MQTT_PORT = int(_lecture_env("PORT"))
+MQTT_UTILISATEUR = _lecture_env("USERNAME")
+MQTT_MOT_DE_PASSE = _lecture_env("PASSWORD")
+# Certificat du broker EMQX pour la connexion TLS
+MQTT_CERTIFICAT_CA = RACINE / "emqxsl-ca.crt"
+
 TOPIC_EAU = "ferixu/eau"
 TOPIC_LUMIERE = "ferixu/lumiere"
 TOPIC_SOL = "ferixu/sol"

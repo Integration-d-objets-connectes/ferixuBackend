@@ -208,6 +208,9 @@ def on_message(client, userdata, msg):
 
 
 if __name__ == "__main__":
+    if not config.MONGODB_URI or not config.MONGODB_BASE:
+        raise RuntimeError("Variables d'environnement manquantes : MONGODB_URI et MONGODB_BASE")
+
     # tz_aware=True : les dates lues de MongoDB sont en UTC avec leur fuseau
     client_mongo = MongoClient(config.MONGODB_URI, serverSelectionTimeoutMS=5000, tz_aware=True)
     db = client_mongo[config.MONGODB_BASE]
@@ -218,6 +221,9 @@ if __name__ == "__main__":
                          client_id="ferixu-ingestion")
     client.on_connect = on_connect
     client.on_message = on_message
+    # Connexion sécurisée au broker EMQX, comme dans la démo du cours
+    client.username_pw_set(config.MQTT_UTILISATEUR, config.MQTT_MOT_DE_PASSE)
+    client.tls_set(ca_certs=str(config.MQTT_CERTIFICAT_CA))
 
     client.connect(config.MQTT_HOTE, config.MQTT_PORT, 60)
 
