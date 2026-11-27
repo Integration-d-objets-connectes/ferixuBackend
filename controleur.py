@@ -15,6 +15,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+import config
 from actionneurs import FeuCirculation, Pompe
 from capteurs import Flotteur
 from models import Configuration
@@ -265,7 +266,7 @@ class Controleur:
             return None
         dernier = autos[-1]
         return datetime.fromisoformat(dernier["horodatage"]) + timedelta(
-            minutes=30, seconds=dernier.get("duree", 3)
+            minutes=config.INTERVALLE_ARROSAGE_MINUTES, seconds=dernier.get("duree", 3)
         )
 
     def evaluer_arrosage_automatique(self) -> None:
@@ -485,7 +486,8 @@ class Controleur:
             "dernier_arrosage": (
                 self.etat["arrosages"][-1] if self.etat["arrosages"] else None
             ),
-            "arrosages_24h": len(self.arrosages_recents()),
+            "arrosages_en_24h": len(self.arrosages_recents()),
+            "intervalle_arrosage": config.INTERVALLE_ARROSAGE_MINUTES,
             "prochain_auto": (
                 prochain.isoformat()
                 if prochain and prochain > self.maintenant()

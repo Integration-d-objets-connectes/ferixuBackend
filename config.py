@@ -11,11 +11,12 @@ RACINE = Path(__file__).resolve().parent
 load_dotenv(RACINE / ".env")
 
 
-def _lecture_env(nom: str) -> str:
+def _lecture_env(nom: str, ancien_nom: str) -> str:
     """Lit une variable d'environnement obligatoire, comme dans la démo du cours.
 
     Args:
         nom (str): Nom de la variable dans le fichier .env.
+        ancien_nom (str): Nom accepté pour les installations déjà configurées.
 
     Raises:
         RuntimeError: Si la variable est absente ou vide.
@@ -23,7 +24,7 @@ def _lecture_env(nom: str) -> str:
     Returns:
         str: Valeur de la variable.
     """
-    valeur = getenv(nom)
+    valeur = getenv(nom) or getenv(ancien_nom)
     if not valeur:
         raise RuntimeError(f"Variable d'environnement manquante : {nom}")
 
@@ -35,12 +36,13 @@ def _lecture_env(nom: str) -> str:
 MONGODB_URI = getenv("MONGODB_URI", "")
 MONGODB_BASE = getenv("MONGODB_BASE", "")
 PLANTE_ID = int(getenv("PLANTE_ID", "1"))
+INTERVALLE_ARROSAGE_MINUTES = 30
 
 # ---- Broker MQTT (EMQX), comme dans la démo du cours ---- #
-MQTT_HOTE = _lecture_env("BROKER")
-MQTT_PORT = int(_lecture_env("PORT"))
-MQTT_UTILISATEUR = _lecture_env("USERNAME")
-MQTT_MOT_DE_PASSE = _lecture_env("PASSWORD")
+MQTT_HOTE = _lecture_env("MQTT_HOTE", "BROKER")
+MQTT_PORT = int(_lecture_env("MQTT_PORT", "PORT"))
+MQTT_UTILISATEUR = _lecture_env("MQTT_UTILISATEUR", "USERNAME")
+MQTT_MOT_DE_PASSE = _lecture_env("MQTT_MOT_DE_PASSE", "PASSWORD")
 # Certificat du broker EMQX pour la connexion TLS
 MQTT_CERTIFICAT_CA = RACINE / "emqxsl-ca.crt"
 
@@ -57,6 +59,9 @@ PERIODE_LECTURE_RESERVOIR = 600
 
 # Période du thread MQTT (indépendante des périodes de lecture).
 PERIODE_PUBLICATION = 5
+# Statut complet (~1 Ko) : toutes les 60 s pour respecter le quota gratuit d'EMQX.
+# Une commande reçue provoque quand même un statut immédiat.
+PERIODE_STATUT = 60
 
 # EF03 : lecture de la luminosité toutes les minutes.
 PERIODE_LECTURE_LUMIERE = 60

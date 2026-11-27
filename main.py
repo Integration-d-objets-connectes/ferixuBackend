@@ -130,7 +130,7 @@ def main() -> None:
                     acquisition.lire(controleur, maintenant)
                     if maintenant >= prochain_statut:
                         emettre("statut", controleur.statut())
-                        prochain_statut = maintenant + config.PERIODE_PUBLICATION
+                        prochain_statut = maintenant + config.PERIODE_STATUT
                     arret.wait(0.1)
             finally:
                 # Couper la pompe avant le nettoyage du bus et les attentes réseau.
