@@ -54,20 +54,24 @@ GPIO_FLOTTEUR = 16
 GPIO_FEU_ROUGE = 23
 GPIO_FEU_JAUNE = 22
 GPIO_FEU_VERT = 27
-# EF05 : synchronisée avec la lecture du sol.
-PERIODE_LECTURE_RESERVOIR = 600
 
+# Cadences en secondes. Mettre False après l’essai sur le Raspberry Pi.
+MODE_TEST_RAPIDE = True
 # Période du thread MQTT (indépendante des périodes de lecture).
 PERIODE_PUBLICATION = 5
-# Statut complet (~1 Ko) : toutes les 60 s pour respecter le quota gratuit d'EMQX.
-# Une commande reçue provoque quand même un statut immédiat.
-PERIODE_STATUT = 60
+# Le statut complet est aussi publié après chaque commande.
+PERIODE_STATUT = 10 if MODE_TEST_RAPIDE else 60
 
-# EF03 : lecture de la luminosité toutes les minutes.
-PERIODE_LECTURE_LUMIERE = 60
+# EF03 : une lecture par minute en fonctionnement normal.
+PERIODE_LECTURE_LUMIERE = int(
+    getenv("PERIODE_LECTURE_LUMIERE", "5" if MODE_TEST_RAPIDE else "60")
+)
+if PERIODE_LECTURE_LUMIERE < 1:
+    raise ValueError("PERIODE_LECTURE_LUMIERE doit être d’au moins une seconde")
 
-# EF01 et EF02 : humidité et température acquises ensemble toutes les 10 min.
-PERIODE_LECTURE_SOL = 600
+# EF01, EF02 et EF05 : sol et réservoir lus ensemble toutes les 10 min en temps normal.
+PERIODE_LECTURE_SOL = 10 if MODE_TEST_RAPIDE else 600
+PERIODE_LECTURE_RESERVOIR = PERIODE_LECTURE_SOL
 # Calibration mesurée sur notre capteur : valeur brute dans un sol sec (0 %)
 # et dans l'eau (100 %). Sans calibration, humidite_pct reste None (null dans le JSON).
 HUMIDITE_BRUTE_SEC = 340
