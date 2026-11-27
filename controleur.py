@@ -1,3 +1,6 @@
+# @author Félix Lachapelle
+# @author Éric
+
 """Règles EF04 à EF24; tout accès matériel reste dans le thread principal."""
 
 from __future__ import annotations

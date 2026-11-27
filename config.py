@@ -42,7 +42,7 @@ TOPIC_EAU = "ferixu/eau"
 TOPIC_LUMIERE = "ferixu/lumiere"
 TOPIC_SOL = "ferixu/sol"
 GPIO_FLOTTEUR = 16
-# Même attribution que le config.py racine; à confirmer sur le montage réel.
+# Broches du feu tricolore; à confirmer sur le montage réel.
 GPIO_FEU_ROUGE = 23
 GPIO_FEU_JAUNE = 22
 GPIO_FEU_VERT = 27
@@ -69,6 +69,7 @@ RELAIS_ACTIF_HAUT = True
 FUSEAU_HORAIRE = "America/Toronto"
 FUSEAU_LOCAL = ZoneInfo(FUSEAU_HORAIRE)
 FICHIER_ETAT = RACINE / "donnees" / "etat.json"
+
 TOPIC_COMMANDES = "ferixu/commandes"
 TOPIC_STATUT = "ferixu/statut"
 TOPIC_RESULTAT = "ferixu/resultat"

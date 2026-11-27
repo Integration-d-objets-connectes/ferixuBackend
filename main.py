@@ -1,3 +1,6 @@
+# @author Félix Lachapelle
+# @author Éric
+
 """Pattern du cours : acquisition/décision principales, publication dans un thread."""
 
 from __future__ import annotations
