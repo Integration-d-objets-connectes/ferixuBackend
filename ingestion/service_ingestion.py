@@ -20,7 +20,7 @@ FICHIER_DONNEES = config.RACINE / "donnees" / "lectures_capteurs.jsonl"
 NOM_PLANTE = "Basilic"
 PLANTE_INITIALE = {
     "nom": NOM_PLANTE,
-    "intervalle_arrosage": 30,  # Délai minimal en minutes (EF08).
+    "intervalle_arrosage": config.INTERVALLE_ARROSAGE_MINUTES,
     "utilisateur_id": None,
 }
 
@@ -68,7 +68,7 @@ def preparer_base(db: Database) -> None:
 
 
 def on_connect(client, userdata, flags, reason_code, properties):
-    """Abonne le service aux six topics du Pi après chaque connexion au broker."""
+    """Abonne le service aux sept topics du Pi après chaque connexion au broker."""
     if reason_code.is_failure:
         print(f"Échec de connexion au broker : {reason_code}")
         return
@@ -81,6 +81,7 @@ def on_connect(client, userdata, flags, reason_code, properties):
     client.subscribe(config.TOPIC_ARROSAGE, qos=1)
     client.subscribe(config.TOPIC_STATUT, qos=1)
     client.subscribe(config.TOPIC_CONFIGURATION, qos=1)
+    client.subscribe(config.TOPIC_RESULTAT, qos=1)
 
 
 def on_message(client, userdata, msg):
@@ -125,6 +126,11 @@ def on_message(client, userdata, msg):
             case config.TOPIC_CONFIGURATION:
                 # Dans le message de configuration, les seuils sont à la racine.
                 enregistrer_configuration(donnees["plante_id"], donnees, horodatage)
+                # Une copie retenue rejouée à l'abonnement sert à resynchroniser Plante.
+                if not msg.retain:
+                    enregistrer_evenement("configuration", donnees, horodatage)
+            case config.TOPIC_RESULTAT:
+                enregistrer_evenement("commande", donnees, horodatage)
     except KeyError as erreur:
         print(f"Champ manquant {erreur}, message ignoré : {donnees}")
     except PyMongoError as erreur:
@@ -183,6 +189,8 @@ def enregistrer_sol(donnees: dict, horodatage: datetime) -> None:
     mesures_du_sol = {
         "temperature_c": temperature_c,
         "humidite_brut": humidite_brut,
+        # Pourcentage calibré par le Pi (None sans calibration), comparé au seuil
+        "humidite_pct": donnees.get("humidite_pct"),
     }
     db.Temperature_humidite.insert_one(
         {"horodatage": horodatage, "plante_id": plante_id, **mesures_du_sol}
@@ -222,12 +230,41 @@ def enregistrer_arrosage(donnees: dict, horodatage: datetime) -> None:
             "horodatage": horodatage,
             "plante_id": donnees["plante_id"],
             "auto": donnees["auto"],
+            # automatique, manuel ou test (absent des anciens messages)
+            "mode": donnees.get("mode"),
         }
     )
     ecrire_dans_plante(
         donnees["plante_id"], horodatage, mettre_a_jour_dernier_arrosage=True
     )
     print(f"[{horodatage}] Arrosage (auto : {donnees['auto']})")
+
+
+def enregistrer_evenement(type_evenement: str, donnees: dict, horodatage: datetime) -> None:
+    """Ajoute une activité à la collection Evenement (historique des activités).
+
+    Types : « configuration » (paramètres appliqués par le Pi) et « commande »
+    (résultat d'une commande manuelle : arrosage, test de la pompe ou du feu).
+
+    Args:
+        type_evenement: configuration ou commande.
+        donnees: Message MQTT complet, avec plante_id.
+        horodatage: Date du message en UTC.
+    """
+    details = {
+        cle: valeur
+        for cle, valeur in donnees.items()
+        if cle not in ("plante_id", "horodatage")
+    }
+    db.Evenement.insert_one(
+        {
+            "horodatage": horodatage,
+            "plante_id": donnees["plante_id"],  # référence
+            "type": type_evenement,
+            "details": details,
+        }
+    )
+    print(f"[{horodatage}] Événement {type_evenement} : {details}")
 
 
 def enregistrer_configuration(plante_id: int, parametres: dict, horodatage: datetime) -> None:

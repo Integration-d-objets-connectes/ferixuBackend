@@ -54,7 +54,7 @@ class SoilSensor(Capteur):
 
         return {
             "temperature_c": temperature,
-            "humidite_brute": humidite_brute,
+            "humidite_brut": humidite_brute,
             "humidite_pct": humidite_pct,
             "horodatage": horodatage,
         }
