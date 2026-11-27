@@ -429,13 +429,17 @@ class Controleur:
         else:
             raise ValueError("Commande inconnue.")
 
-    def traiter_commande(self, commande: dict, monotone: float) -> None:
+    def traiter_commande(self, commande: object, monotone: float) -> None:
         """Exécute une commande et publie son résultat avec son identifiant (ET05).
 
         Args:
             commande: Valeur JSON reçue sur le topic des commandes.
             monotone: Temps monotone actuel en secondes.
         """
+        if not isinstance(commande, dict):
+            print("Commande MQTT ignorée : objet JSON attendu.")
+            return
+
         try:
             self.commande(commande, monotone)
         except (ValueError, KeyError, TypeError, OSError, RuntimeError) as erreur:
