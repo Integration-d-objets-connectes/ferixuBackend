@@ -51,3 +51,124 @@ La différence de référence du flotteur est signalée dans l’[inventaire](in
 | Luminosité | Mesurée avec le BH1750 en lux |
 
 Les tableaux peuvent être copiés depuis l’aperçu Markdown ou GitHub dans Google Docs.
+
+## Schéma des données
+
+MongoDB stocke les horodatages en dates BSON UTC. Les exemples JSON les représentent
+en ISO 8601 avec le suffixe `Z`. Dans les historiques, `plante_id` correspond à
+`Plante.id`. MongoDB ajoute automatiquement un champ `_id` à ses documents.
+
+### Lumiere
+
+Série temporelle des mesures en lux qui alimentent le graphique de luminosité.
+
+```json
+{
+  "lux": 0,
+  "horodatage": "2026-01-01T03:20:32Z",
+  "plante_id": 1
+}
+```
+
+### Temperature_humidite
+
+Série temporelle des mesures du sol qui alimentent le graphique de température
+et d’humidité. `temperature_c` est en degrés Celsius, `humidite_brut` est la
+valeur brute du capteur et `humidite_pct` le pourcentage calibré par le Pi
+(`null` sans calibration).
+
+```json
+{
+  "temperature_c": 0,
+  "humidite_brut": 0,
+  "humidite_pct": 0,
+  "horodatage": "2026-01-01T03:20:32Z",
+  "plante_id": 1
+}
+```
+
+### Arrosage
+
+Collection classique qui conserve les démarrages de la pompe. `auto` vaut
+`true` pour un arrosage automatique et `false` pour une commande manuelle ou
+un test; `mode` précise `automatique`, `manuel` ou `test`. L’API compte les
+événements de la plante sur les 24 dernières heures.
+
+```json
+{
+  "auto": true,
+  "mode": "automatique",
+  "horodatage": "2026-01-01T03:20:32Z",
+  "plante_id": 1
+}
+```
+
+### Evenement
+
+Collection classique de l’historique des activités. `type` vaut `configuration`
+(paramètres appliqués par le Pi, reçus sur `ferixu/configuration`) ou `commande`
+(résultat d’une commande manuelle, reçu sur `ferixu/resultat`).
+
+```json
+{
+  "type": "configuration",
+  "details": {"humidite_min": 30, "lux_min": 10000, "duree_arrosage": 3, "automatique": true},
+  "horodatage": "2026-01-01T03:20:32Z",
+  "plante_id": 1
+}
+```
+
+### Utilisateur
+
+Collection classique prévue pour l’authentification. Le service d’ingestion ne
+la crée pas actuellement. Le champ `passwd` est prévu pour une empreinte de
+mot de passe. L’authentification reste à implémenter.
+
+```json
+{
+  "id": 1,
+  "nom": "Marc",
+  "passwd": "<empreinte_du_mot_de_passe>"
+}
+```
+
+### Plante
+
+Collection classique qui conserve les dernières mesures, l’état du réservoir,
+le dernier arrosage, les seuils et le propriétaire. `utilisateur_id` correspond à
+`Utilisateur.id` et vaut `null` jusqu’à l’association. L’intervalle minimal de
+l’arrosage automatique est exprimé en minutes, le seuil d’humidité en pourcentage
+et le seuil de luminosité en lux.
+
+L’exemple montre la réponse de l’API. L’API y ajoute `arrosages_en_24h` en
+interrogeant `Arrosage` au moment de la lecture.
+
+```json
+{
+  "id": 1,
+  "nom": "Daniel",
+  "temperature_c": 0,
+  "humidite_brut": 0,
+  "eau_vide": true,
+  "lux": 0,
+  "dernier_arrosage": "2026-01-01T03:20:32Z",
+  "arrosages_en_24h": 3,
+  "horodatage": "2026-01-01T03:20:32Z",
+  "intervalle_arrosage": 30,
+  "seuil_humidite": 30,
+  "seuil_luminosite": 10000,
+  "utilisateur_id": 1
+}
+```
+
+### Sources des pages
+
+| Page | Données | Route API |
+| --- | --- | --- |
+| Accueil | `Plante` | `GET /api/plantes/{id}` |
+| Graphiques | `Temperature_humidite` et `Lumiere` | `GET /api/plantes/{id}/temperature-humidite` et `GET /api/plantes/{id}/lumiere` |
+| Paramètres | `Plante` | `GET /api/plantes/{id}` |
+
+La [procédure de démarrage de l’ingestion](../mongodb/README.md) décrit la
+configuration de MongoDB. Le [bilan des exigences](exigences_fonctionnelles.md#couverture-actuelle)
+indique ce qui est en place et ce qui reste à vérifier ou à réaliser.

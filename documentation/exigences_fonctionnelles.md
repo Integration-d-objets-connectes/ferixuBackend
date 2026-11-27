@@ -74,24 +74,35 @@ L’utilisateur pourra :
 Même en mode manuel, la pompe ne pourra jamais fonctionner lorsque l’interrupteur à flotteur indique que le niveau d’eau est insuffisant.
 
 
-## Couverture du backend
+## Couverture actuelle
 
-Cette section distingue les règles implémentées des écrans à réaliser. Les tests matériels restent à effectuer; cette liste ne certifie pas le montage.
+Le tableau décrit la couverture observable dans le code du Pi, de l’ingestion, de l’API et du client NiceGUI. La validation sur le montage et le déploiement en conditions réelles restent à confirmer. Les collections et les routes utilisées par les pages sont précisées dans le [schéma des données](README.md#schéma-des-données).
 
-| Exigences | Implémentation backend | Limite / interface restante |
+| Exigences | Implémentation actuelle | Écart ou point à vérifier |
 | --- | --- | --- |
 | EF01–EF02 | Sol acquis ensemble toutes les 600 s et envoyé sur `ferixu/sol` | Configurer la calibration pour obtenir les %; sinon `humidite_pct` vaut `null` |
 | EF03–EF04 | Lux toutes les 60 s dans `capteurs/acquisition.py`, cumul au seuil et répartition par jour dans `controleur.py` | Cumul estimé entre mesures valides, aucune durée ajoutée pendant une interruption > 90 s |
 | EF05 | Eau lue avec le sol, avant/après l’arrosage et pendant la pompe | Valider le sens du contact sur le montage |
 | EF06–EF09 | Conditions automatiques, coupure ≤ 3 s, attente de 30 min après la fin, maximum de 6 sur 24 h glissantes | Mode automatique désactivé par défaut; configurer le relais |
 | EF10–EF13 | Priorité rouge, jaune, vert et retour à la couleur calculée | Données nécessaires manquantes : état inconnu/feu éteint si aucun rouge connu |
-| EF14–EF16 | Commandes `arroser`, `parametres` et `tester_pompe`; contrôle d’eau commun | Boutons et application hors périmètre |
-| EF17 | Commande `tester_feu` : vert, jaune, rouge, puis retour à la décision | Bouton hors périmètre |
-| EF18 | Dernières mesures et horodatages dans `ferixu/statut` | Affichage hors périmètre |
-| EF19–EF20 | Mesures sol/lumière horodatées enregistrées en JSONL | Graphiques hors périmètre |
-| EF21–EF22 | 7 jours de cumul et total du jour dans `ferixu/statut` | Affichage et objectif visuel 6–8 h hors périmètre |
-| EF23 | Dernier arrosage, nombre sur 24 h et prochaine échéance dans le statut | Affichage hors périmètre |
-| EF24 | Commande `parametres`, validation, enregistrement et utilisation par les règles | Formulaire hors périmètre |
+| EF14–EF16 | L’API transmet les commandes d’arrosage, de test de pompe et de configuration. Le Pi vérifie le niveau d’eau avant d’activer la pompe. | Les commandes et le réglage du mode automatique restent à relier au client. |
+| EF17 | L’API permet de tester le feu. Le Pi affiche vert, jaune et rouge avant de reprendre l’indication normale. | Le bouton de test reste à ajouter au client. |
+| EF18 | L’accueil lit les dernières mesures, l’état du réservoir et l’horodatage dans `Plante` via l’API. | L’humidité est affichée en valeur brute. Le pourcentage demandé reste à afficher. |
+| EF19–EF20 | Les deux graphiques utilisent les séries temporelles du sol et de la lumière via l’API. | Le graphique du sol utilise la valeur brute. Le pourcentage demandé reste à afficher. |
+| EF21–EF22 | Le Pi calcule le cumul du jour et conserve celui des sept derniers jours. L’API propose aussi une estimation par journée à partir de `Lumiere`. | L’interface n’affiche ni ces cumuls ni l’objectif quotidien de 6 à 8 h. |
+| EF23 | L’accueil affiche le dernier arrosage et le compteur sur 24 h calculé par l’API à partir de `Arrosage`. | Le Pi publie la prochaine échéance automatique dans son statut. L’accueil ne l’affiche pas encore. |
+| EF24 | L’API et le Pi valident la configuration. La page Paramètres lit les seuils appliqués dans `Plante`. | La page est en lecture seule. La saisie des seuils et de la durée ainsi que leur enregistrement restent à relier à l’API. |
+
+### Points à compléter pour la remise finale
+
+- Ajouter la connexion et la protection des pages. La collection `Utilisateur` est prévue pour cette fonction.
+- Relier le client à MQTT pour actualiser les mesures, l’état du système et les actionneurs en direct. L’accueil charge actuellement les données à l’ouverture.
+- Ajouter les notifications par courriel avec le délai entre les envois demandé par la remise.
+- Historiser les alertes. L’ingestion conserve déjà les arrosages, les changements de configuration reçus en direct et les résultats des commandes.
+- Afficher les dates et heures au format québécois demandé. La conversion à l’heure de Toronto est en place.
+- Confirmer le fonctionnement du pipeline déployé, la collecte réelle de 48 h et les tests d’instrumentation sur le montage.
+
+[Énoncé de la remise finale, pages 1 à 3](Remise%20finale%20du%20projet.docx.pdf)
 
 ### Précisions des règles
 

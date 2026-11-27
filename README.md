@@ -14,7 +14,7 @@ Structure inspirée de la [démo du cours](https://github.com/5P0-Integration-d-
 - `models/` : modèle pydantic `Configuration`, validation des paramètres sur le Pi.
 - `publication_donnees/` : connexion et publication MQTT (`PublicateurMQTT`).
 - `reception_donnees/` : réception des commandes MQTT (`AbonneMQTT`). Le callback réseau ajoute les commandes à une file; il ne commande pas le matériel.
-- `ingestion/service_ingestion.py` : réception, historiques MongoDB (`Lumiere`, `Temperature_humidite`, `Arrosage`), mise à jour de `Plante` et enregistrement dans `donnees/lectures_capteurs.jsonl`.
+- `ingestion/service_ingestion.py` : réception, historiques MongoDB (`Lumiere`, `Temperature_humidite`, `Arrosage`, `Evenement`), mise à jour de `Plante` et enregistrement dans `donnees/lectures_capteurs.jsonl`.
 
 Le `main.py` de la prof lit directement un capteur. Ici, `Acquisition` gère deux échéances (sol et réservoir aux 600 s, lumière aux 60 s), ouvre le bus I²C partagé à la première lecture et retente l’initialisation après une erreur. Les pilotes restent dans `capteurs/` et les décisions dans `controleur.py`.
 
@@ -49,7 +49,7 @@ Configurer `config.py` avant les essais :
 
 Définir `RELAIS_ACTIF_HAUT` selon le relais utilisé. Alimenter la pompe par le circuit de puissance commandé par le relais, pas par un GPIO.
 
-Pour calibrer le sol : relever `humidite_brute` dans le sol de référence sec puis humide; inscrire ces valeurs dans `HUMIDITE_BRUTE_SEC` et `HUMIDITE_BRUTE_HUMIDE`. La conversion est linéaire, limitée à 0–100 %. Ce pourcentage est un indice relatif à ces deux références, pas une mesure volumétrique certifiée. Confirmer d’abord que le capteur alternatif de l’inventaire est compatible avec le pilote STEMMA/Seesaw.
+Pour calibrer le sol, relever `humidite_brut` dans le sol de référence sec puis humide et inscrire ces valeurs dans `HUMIDITE_BRUTE_SEC` et `HUMIDITE_BRUTE_HUMIDE`. La conversion linéaire de 0 à 100 % donne un indice relatif à ces deux références. Confirmer d’abord que le capteur alternatif de l’inventaire est compatible avec le pilote STEMMA/Seesaw.
 
 ## Installation sur Raspberry Pi OS
 
@@ -74,7 +74,7 @@ python -m pip install -r requirements.txt
 Renseigner `MONGODB_URI`, `MONGODB_BASE` et `PLANTE_ID` dans `.env`, à partir de
 `.env.example`, avant de lancer l'ingestion. Voir la [configuration MongoDB](mongodb/README.md).
 
-Renseigner aussi le broker EMQX : `BROKER`, `PORT`, `USERNAME` et `PASSWORD`. Le certificat
+Renseigner aussi le broker EMQX : `MQTT_HOTE`, `MQTT_PORT`, `MQTT_UTILISATEUR` et `MQTT_MOT_DE_PASSE`. Le certificat
 `emqxsl-ca.crt` doit être à la racine du projet (connexion TLS, comme dans la démo du cours).
 
 Pour un essai local, lancer l’ingestion puis la collecte dans deux terminaux. Pour le déploiement du diagramme, exécuter l’ingestion sur le serveur et lancer `main.py` sur le Raspberry Pi. Les deux processus utilisent le même broker EMQX.
@@ -116,7 +116,7 @@ Pour visualiser la maquette de l'application :
 | Topic | Contenu |
 | --- | --- |
 | `ferixu/eau` | `etat`, `vide`, `horodatage` |
-| `ferixu/sol` | `temperature_c`, `humidite_brute`, `humidite_pct`, `horodatage` |
+| `ferixu/sol` | `temperature_c`, `humidite_brut`, `humidite_pct`, `horodatage` |
 | `ferixu/lumiere` | `lux`, `horodatage` |
 | `ferixu/statut` | Dernières mesures, erreurs, paramètres appliqués, couleur, cumuls et informations d’arrosage |
 | `ferixu/commandes` | Commandes JSON reçues par le backend |
@@ -126,9 +126,7 @@ Pour visualiser la maquette de l'application :
 
 Les messages publiés par ce Raspberry Pi incluent aussi `plante_id`, défini par
 `PLANTE_ID` dans `.env`. Le `horodatage` d'une mesure est celui de son acquisition;
-l'ingestion l'enregistre tel quel en UTC. Les résultats de commandes, les configurations
-appliquées et les changements de couleur du feu sont historisés dans la collection
-`evenements`. Les commandes sont normalement envoyées par l'[API](../ferixuFastApi/README.md)
+l'ingestion l'enregistre en UTC. Le Pi publie un statut complet toutes les 60 s et après chaque commande traitée. L’ingestion historise les configurations reçues en direct et les résultats des commandes dans `Evenement`. Les commandes sont envoyées par l'[API](../ferixuFastApi/README.md)
 (`PUT /api/configuration`, `POST /api/commandes`).
 
 Chaque commande demande un `id` unique et un `horodatage` UTC récent (30 s maximum). Ne pas utiliser de message retained pour les commandes. Les doublons récents sont refusés. `succes` confirme le traitement/démarrage, pas la présence d’un débit d’eau mesuré.
@@ -196,4 +194,4 @@ Responsables tirés des mentions `@author` du code. À compléter par l’équip
 | Aligner la structure du backend sur la démo du cours (`demo-broker-thread`) | Démo du cours, code du projet, `documentation/` | Ajout de `reception_donnees/AbonneMQTT` et de `models/Configuration`, connexion TLS à EMQX. Première version trop refactorisée : l’équipe a demandé de garder la logique, les commentaires et les auteurs d’origine. |
 | Vérifier le projet selon la grille de la remise finale | `Remise finale du projet.docx.pdf` | Docstrings manquantes ajoutées, période du sol remise à 600 s (EF01), commentaires et README corrigés. |
 | Alléger le point d’entrée du Pi (Codex) | `ExempleProf/demo-broker-thread/main.py`, `service_ingestion.py`, schéma et grille de la remise | Acquisition et décisions extraites de `main.py`. Sections et docstrings harmonisées. Les commandes JSON qui ne sont pas des objets sont ignorées. |
-| Créer l’API FastAPI et adapter l’ingestion pour l’historique | Exemples du cours (`api-iot`, `client-iot`, `demo-broker-thread`), `Remise finale du projet.docx.pdf`, `documentation/`, code du backend et du front | API `ferixuFastApi` (historique MongoDB, configuration et commandes MQTT, tests). Ingestion : horodatage d’acquisition du Pi, `humidite_pct`, collection `evenements` (état, configuration, commandes). Pi : topic retenu `ferixu/configuration`, `mode`/`duree` des arrosages. À réviser par l’équipe. |
+| Créer l’API FastAPI et adapter l’ingestion pour l’historique | Exemples du cours (`api-iot`, `client-iot`, `demo-broker-thread`), `Remise finale du projet.docx.pdf`, `documentation/`, code du backend et du front | API `ferixuFastApi` (historique MongoDB, configuration et commandes MQTT, tests). Ingestion : horodatage d’acquisition du Pi, mesures du sol et de lumière et historique des arrosages. Pi : topic retenu `ferixu/configuration`, `mode`/`duree` des arrosages. À réviser par l’équipe. |
