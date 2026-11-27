@@ -11,7 +11,9 @@ Structure inspirée de la [démo du cours](https://github.com/5P0-Integration-d-
 - `main.py` : lecture des capteurs, traitement des commandes et décision dans le thread principal; publication dans un thread séparé avec `Lock` et `Event`.
 - `controleur.py` : règles d’arrosage, couleur du feu, cumul lumineux et paramètres persistants.
 - `capteurs/`, `actionneurs/` : pilotes du matériel.
-- `publication_donnees/` : connexion, publication et réception des commandes MQTT. Le callback réseau ajoute les commandes à une file; il ne commande pas le matériel.
+- `models/` : modèle pydantic `Configuration`, validation des paramètres sur le Pi.
+- `publication_donnees/` : connexion et publication MQTT (`PublicateurMQTT`).
+- `reception_donnees/` : réception des commandes MQTT (`AbonneMQTT`). Le callback réseau ajoute les commandes à une file; il ne commande pas le matériel.
 - `ingestion/service_ingestion.py` : réception, historiques MongoDB (`Lumiere`, `Temperature_humidite`, `Arrosage`), mise à jour de `Plante` et enregistrement dans `donnees/lectures_capteurs.jsonl`.
 
 ## Règles du backend
@@ -39,7 +41,7 @@ Configurer `config.py` avant les essais :
 | Feu rouge / jaune / vert | GPIO BCM 23 / 22 / 27 |
 | BH1750 | Bus I²C |
 | STEMMA Soil Sensor | Bus I²C, adresse `0x36` |
-| Relais de la pompe | `GPIO_RELAIS = None` tant que la broche réelle n’est pas renseignée |
+| Relais de la pompe | GPIO BCM 17 (`GPIO_RELAIS`); `None` désactive la pompe |
 
 Définir `RELAIS_ACTIF_HAUT` selon le relais utilisé. Alimenter la pompe par le circuit de puissance commandé par le relais, pas par un GPIO.
 
@@ -49,8 +51,7 @@ Pour calibrer le sol : relever `humidite_brute` dans le sol de référence sec p
 
 ```bash
 sudo apt update
-sudo apt install -y git python3-venv python3-pip python3-lgpio mosquitto mosquitto-clients
-sudo systemctl enable --now mosquitto
+sudo apt install -y git python3-venv python3-pip python3-lgpio
 sudo raspi-config
 ```
 
@@ -69,6 +70,9 @@ python -m pip install -r requirements.txt
 Renseigner `MONGODB_URI`, `MONGODB_BASE` et `PLANTE_ID` dans `.env`, à partir de
 `.env.example`, avant de lancer l'ingestion. Voir la [configuration MongoDB](mongodb/README.md).
 
+Renseigner aussi le broker EMQX : `BROKER`, `PORT`, `USERNAME` et `PASSWORD`. Le certificat
+`emqxsl-ca.crt` doit être à la racine du projet (connexion TLS, comme dans la démo du cours).
+
 Dans deux terminaux depuis le projet :
 
 ```bash
@@ -84,8 +88,7 @@ python main.py
 ```
 
 ```bash
-# Observer sans MQTTX
-mosquitto_sub -h localhost -t 'ferixu/#' -v
+# Observer les données enregistrées
 tail -f donnees/lectures_capteurs.jsonl
 ```
 
@@ -113,12 +116,16 @@ Pour visualiser la maquette de l'application :
 | `ferixu/lumiere` | `lux`, `horodatage` |
 | `ferixu/statut` | Dernières mesures, erreurs, paramètres appliqués, couleur, cumuls et informations d’arrosage |
 | `ferixu/commandes` | Commandes JSON reçues par le backend |
-| `ferixu/resultat` | `id`, `succes`, `message`, `horodatage` après traitement d’une commande |
-| `ferixu/arrosage` | `auto`, `horodatage` après le démarrage réussi de la pompe |
+| `ferixu/resultat` | `id`, `action`, `succes`, `message`, `horodatage` après traitement d’une commande |
+| `ferixu/arrosage` | `auto`, `mode` (automatique, manuel, test), `duree`, `horodatage` après le démarrage réussi de la pompe |
+| `ferixu/configuration` | Configuration appliquée (`humidite_min`, `lux_min`, `duree_arrosage`, `automatique`), message retenu |
 
 Les messages publiés par ce Raspberry Pi incluent aussi `plante_id`, défini par
-`PLANTE_ID` dans `.env`. Les résultats des commandes restent destinés au client;
-l'ingestion ne les enregistre pas dans une collection séparée.
+`PLANTE_ID` dans `.env`. Le `horodatage` d'une mesure est celui de son acquisition;
+l'ingestion l'enregistre tel quel en UTC. Les résultats de commandes, les configurations
+appliquées et les changements de couleur du feu sont historisés dans la collection
+`evenements`. Les commandes sont normalement envoyées par l'[API](../ferixuFastApi/README.md)
+(`PUT /api/configuration`, `POST /api/commandes`).
 
 Chaque commande demande un `id` unique et un `horodatage` UTC récent (30 s maximum). Ne pas utiliser de message retained pour les commandes. Les doublons récents sont refusés. `succes` confirme le traitement/démarrage, pas la présence d’un débit d’eau mesuré.
 
@@ -129,6 +136,8 @@ from datetime import datetime, timezone
 from uuid import uuid4
 import json
 from paho.mqtt.publish import single
+
+import config
 
 commande = {
     "id": uuid4().hex,
@@ -141,19 +150,45 @@ commande = {
         "duree_arrosage": 3,
     },
 }
-single("ferixu/commandes", json.dumps(commande), hostname="localhost", qos=1)
+single(
+    "ferixu/commandes",
+    json.dumps(commande),
+    hostname=config.MQTT_HOTE,
+    port=config.MQTT_PORT,
+    auth={"username": config.MQTT_UTILISATEUR, "password": config.MQTT_MOT_DE_PASSE},
+    tls={"ca_certs": str(config.MQTT_CERTIFICAT_CA)},
+    qos=1,
+)
 ```
 
 Actions disponibles : `arroser`, `tester_pompe`, `tester_feu`, `parametres`. Le test du feu enchaîne vert, jaune, rouge pendant une seconde chacun, puis reprend l’état calculé. Les modifications de paramètres s’appliquent aux décisions suivantes; elles ne recalculent pas les anciennes journées de lumière. Un arrosage automatique est évalué lors de chaque nouvelle lecture du sol.
 
 ## Vérification
 
-La [documentation MongoDB](mongodb/README.md) regroupe le test de connexion
-et les exemples d'insertion, de lecture et de collection time series.
+La documentation MongoDB décrit les collections de Ferixu, la vérification de la
+connexion et la lecture des mesures récentes. [MongoDB dans Ferixu](mongodb/README.md)
 
-```bash
-python -m pip install -r requirements-dev.txt
-python -m unittest discover -s tests -v
-```
+Le câblage, la polarité du relais, la calibration et le fonctionnement réel restent à vérifier sur le Raspberry Pi : voir [la procédure](documentation/todo_prochain_cours.md).
 
-Les tests utilisent des GPIO simulés et des mesures contrôlées. Le câblage, la polarité du relais, la calibration et le fonctionnement réel restent à vérifier sur le Raspberry Pi : voir [la procédure](documentation/todo_prochain_cours.md).
+## Tableau des tâches
+
+Responsables tirés des mentions `@author` du code. À compléter par l’équipe.
+
+| Tâche | Responsable |
+| --- | --- |
+| Classe abstraite `Capteur`, pilote BH1750 (`capteurs/capteur_bh1750.py`) | Félix Lachapelle |
+| Pilote du sol STEMMA et calibration (`capteurs/capteur_sol.py`) | Félix Lachapelle, Éric |
+| Flotteur (`capteurs/flotteur.py`) et feu tricolore (`actionneurs/feu_tricolore.py`) | Éric |
+| Pompe et relais (`actionneurs/pompe.py`) | Félix Lachapelle, Éric |
+| Règles d’arrosage et du feu (`controleur.py`), boucle principale (`main.py`) | Félix Lachapelle, Éric |
+| Publication MQTT (`publication_donnees/`), réception MQTT (`reception_donnees/`), validation pydantic (`models/`) | Félix Lachapelle |
+| Service d’ingestion MongoDB (`ingestion/service_ingestion.py`) | Éric, Félix Lachapelle |
+| Configuration (`config.py`, `.env.example`) | Félix Lachapelle, Éric |
+
+### Tâches confiées au coéquipier IA
+
+| Demande | Fourni à l’IA | Résultat et corrections |
+| --- | --- | --- |
+| Aligner la structure du backend sur la démo du cours (`demo-broker-thread`) | Démo du cours, code du projet, `documentation/` | Ajout de `reception_donnees/AbonneMQTT` et de `models/Configuration`, connexion TLS à EMQX. Première version trop refactorisée : l’équipe a demandé de garder la logique, les commentaires et les auteurs d’origine. |
+| Vérifier le projet selon la grille de la remise finale | `Remise finale du projet.docx.pdf` | Docstrings manquantes ajoutées, période du sol remise à 600 s (EF01), commentaires et README corrigés. |
+| Créer l’API FastAPI et adapter l’ingestion pour l’historique | Exemples du cours (`api-iot`, `client-iot`, `demo-broker-thread`), `Remise finale du projet.docx.pdf`, `documentation/`, code du backend et du front | API `ferixuFastApi` (historique MongoDB, configuration et commandes MQTT, tests). Ingestion : horodatage d’acquisition du Pi, `humidite_pct`, collection `evenements` (état, configuration, commandes). Pi : topic retenu `ferixu/configuration`, `mode`/`duree` des arrosages. À réviser par l’équipe. |

@@ -1,179 +1,63 @@
-# MongoDB
+# MongoDB dans Ferixu
 
-Exécuter les commandes depuis la racine du projet, dans l'environnement virtuel.
+Depuis la racine du projet, renseigner `MONGODB_URI`, `MONGODB_BASE` et
+`PLANTE_ID` dans `.env`, à partir de `.env.example`. Lancer ensuite
+`python -m ingestion.service_ingestion`. Le service demande MongoDB 5.0 ou
+plus récent pour créer les séries temporelles.
 
-## Configuration et test de connexion
+| Collection | Données | Opérations |
+| --- | --- | --- |
+| `Lumiere` | Lux mesurés toutes les 60 secondes | Série temporelle, `db.Lumiere.insert_one(...)` |
+| `Temperature_humidite` | Température et humidité brute du sol, mesurées toutes les 10 minutes | Série temporelle, `db.Temperature_humidite.insert_one(...)` |
+| `Arrosage` | Événement publié au démarrage réussi de la pompe : `auto`, `mode`, `duree` | Collection classique, `db.Arrosage.insert_one(...)` |
+| `evenements` | Activités : `etat` (changement de couleur du feu), `configuration` (appliquée par le Pi), `commande` (résultat) avec `details` | Collection classique, `db.evenements.insert_one(...)` |
+| `Plante` | État courant : dernières mesures, `humidite_pct`, `couleur`, configuration appliquée, dernier arrosage, `prochain_auto` | Collection classique, `db.Plante.update_one(...)` |
 
-Installer les dépendances :
+`preparer_base()` crée les séries temporelles manquantes avec
+`horodatage` comme champ de date et `plante_id` comme champ de métadonnées.
+Une collection classique déjà présente continue de recevoir les mesures.
+Pour utiliser une série temporelle avec le même nom, les données existantes
+doivent être migrées vers une nouvelle collection.
+[Documentation MongoDB](https://www.mongodb.com/docs/manual/core/timeseries/timeseries-limitations/)
 
-```bash
-python -m pip install -r requirements.txt
-```
+Les dates sont enregistrées en UTC; c'est l'heure d'acquisition envoyée par le Pi,
+pas l'heure de réception. Une configuration reçue en message retenu (déjà
+historisée) met à jour `Plante` sans créer de nouvel événement. Le nombre
+d'arrosages sur 24 h est calculé par l'API à partir de `Arrosage`. Le champ MQTT `humidite_brute`
+devient `humidite_brut` dans MongoDB.
 
-Renseigner les variables dans le fichier `.env` (voir `.env.example`) :
+L’ingestion met à jour les champs qu’elle reçoit dans `Plante` et conserve
+les autres champs, dont le nom et le propriétaire. Elle écrit aussi le
+message dans `donnees/lectures_capteurs.jsonl` avant l’écriture MongoDB. Une
+erreur MongoDB est affichée et le message est ignoré : le service continue.
 
-```dotenv
-MONGODB_URI=mongodb+srv://votre-utilisateur:votre-mot-de-passe@votre-cluster.mongodb.net/
-MONGODB_BASE=db-demo
-MONGODB_COLLECTION_LUMIERE=Lumiere
-MONGODB_COLLECTION_TEMPERATURE_HUMIDITE=Temperature_humidite
-MONGODB_COLLECTION_ARROSAGE=Arrosage
-MONGODB_COLLECTION_PLANTE=Plante
-PLANTE_ID=1
-```
-
-Le service `python -m ingestion.service_ingestion` enregistre les messages MQTT
-valides avec la fonction `enregistrer_donnees(topic, mesure)`, ainsi que dans
-`donnees/lectures_capteurs.jsonl` :
-
-| Topic MQTT | Enregistrement MongoDB |
-| --- | --- |
-| `ferixu/lumiere` | Historique `Lumiere` et dernière valeur de `lux` dans `Plante` |
-| `ferixu/sol` | Historique `Temperature_humidite` et dernières valeurs de `temperature_c` et `humidite_brut` dans `Plante` |
-| `ferixu/eau` | Mise à jour de `eau_vide` dans `Plante` |
-| `ferixu/arrosage` | Historique `Arrosage` et mise à jour de `dernier_arrosage` dans `Plante` |
-| `ferixu/statut` | Seuils appliqués `seuil_humidite` et `seuil_luminosite` dans `Plante` |
-
-`MONGODB_URI` et `MONGODB_BASE` sont obligatoires au démarrage. Les noms des quatre
-collections sont modifiables avec les variables ci-dessus. La connexion et les
-références aux collections sont initialisées directement avant les callbacks.
-`initialiser_indexes()` crée les index au démarrage; MongoDB crée les collections
-automatiquement pendant cette opération ou lors d'une première insertion.
-Cette initialisation peut être répétée et n'efface pas les données.
-
-Le Raspberry Pi ajoute `plante_id` aux messages qu'il publie à partir de
-`PLANTE_ID`. Pour un message plus ancien sans identifiant, l'ingestion utilise
-la même valeur de configuration. Les historiques contiennent `plante_id` et
-`horodatage`, plus `lux`, le couple `temperature_c` / `humidite_brut`, ou `auto`
-selon la collection. Le champ MQTT `humidite_brute` devient `humidite_brut` dans
-MongoDB. Les dates sont des dates BSON UTC, conservées à la milliseconde;
-utiliser par exemple `2026-11-10T12:00:00+00:00` dans un message MQTT.
-
-Un index unique sur `(plante_id, horodatage)` évite de compter deux fois le même
-message d'historique. `Plante` possède un index unique sur `id`; les mises à jour
-conservent ses autres champs. Les valeurs de capteurs absentes ne sont pas
-remplacées par des zéros. Un arrosage est publié après le démarrage réussi de la
-pompe : `auto` vaut `true` pour le mode automatique et `false` pour le manuel ou
-le test. Cela confirme le démarrage du relais, pas un débit d'eau mesuré.
-
-L'ingestion ne gère pas les comptes `Utilisateur`, le nom ou le propriétaire de
-la plante (`utilisateur_id`), ni `intervalle_arrosage`. Ces champs appartiennent
-à la future API. Le seuil d'humidité publié par le contrôleur est un pourcentage
-(0–100), tandis que `humidite_brut` reste une mesure brute; `seuil_luminosite`
-est en lux. `arrosages_en_24h` doit être calculé par l'API à partir de `Arrosage`
-au moment de la lecture : il n'est pas stocké par l'ingestion.
-
-Les anciennes variables `MONGODB_COLLECTION`, `MONGODB_COLLECTION_EAU`,
-`MONGODB_COLLECTION_SOL`, `MONGODB_COLLECTION_STATUT` et
-`MONGODB_COLLECTION_RESULTAT` ne sont plus utilisées. Les anciens documents
-restent en place; aucune migration automatique n'est effectuée.
-Les topics inconnus, notamment les résultats de commandes destinés à l'interface,
-ne sont pas ingérés.
-Une erreur d'insertion est affichée sans interrompre la réception MQTT;
-les insertions échouées ne sont pas rejouées automatiquement.
-
-`config.py` charge ces variables et définit déjà `FUSEAU_LOCAL` avec
-`ZoneInfo("America/Toronto")`.
-
-Tester la connexion sans insérer de document :
-
-```bash
-python -m mongodb.test_connexion_mongodb
-```
-
-## Tester l'ingestion sans serveur
-
-```bash
-python -m pip install -r requirements-dev.txt
-python -m unittest discover -s tests -v
-```
-
-Les tests utilisent `mongomock` en mémoire, sans broker MQTT, matériel ni accès
-à la base réelle. Ils vérifient les documents, les doublons, les relations par
-identifiant et la conservation des champs gérés par l'API. Le déploiement réel
-reste à vérifier avec MongoDB et le Raspberry Pi.
-
-## Insérer et lire un document
-
-`serverSelectionTimeoutMS=5000` limite à 5 secondes l'attente de sélection
-d'un serveur, au lieu des 30 secondes par défaut.
-
-`tz_aware=True` permet de relire les dates avec leur fuseau UTC, puis de les
-convertir à l'heure locale pour l'affichage.
-
-Exemple à exécuter depuis la racine du projet dans une session Python.
-Chaque exécution insère un nouveau document de démonstration dans `evenements`.
+## Lire les mesures récentes
 
 ```python
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+
+from zoneinfo import ZoneInfo
 
 from pymongo import MongoClient
-from pymongo.errors import ConnectionFailure, OperationFailure
 
 import config
 
-uri = config.MONGODB_URI
+client = MongoClient(config.MONGODB_URI, serverSelectionTimeoutMS=5000, tz_aware=True)
+db = client[config.MONGODB_BASE]
 
-# Un seul client, réutilisé pour toutes les opérations et fermé à la sortie.
-try:
-    with MongoClient(uri, serverSelectionTimeoutMS=5000, tz_aware=True) as client:
-        client.admin.command("ping")
-        print("Connexion réussie")
-        db = client[config.MONGODB_BASE]
+depuis = datetime.now(timezone.utc) - timedelta(minutes=10)
+lectures = db.Lumiere.find(
+    {"plante_id": config.PLANTE_ID, "horodatage": {"$gte": depuis}},
+    {"_id": 0, "horodatage": 1, "lux": 1},
+).sort("horodatage", 1)
 
-        db.evenements.insert_one(
-            {
-                "horodatage": datetime(2026, 10, 23, 16, 0, tzinfo=timezone.utc),
-                "aquarium_id": "aquaveille-01",
-                "type": "repas",
-            }
-        )
+for lecture in lectures:
+    date = lecture["horodatage"].astimezone(ZoneInfo(config.FUSEAU_HORAIRE))
+    print(date.strftime("%Y-%m-%d %H:%M"), lecture["lux"], "lux")
 
-        dernier = db.evenements.find_one(
-            {"aquarium_id": "aquaveille-01", "type": "repas"},
-            sort=[("horodatage", -1)],
-        )
-
-        if dernier is not None:
-            heure_utc = dernier["horodatage"]
-            heure_locale = heure_utc.astimezone(config.FUSEAU_LOCAL)
-
-            print("Enregistré en UTC  :", heure_utc.strftime("%Y-%m-%d %H:%M %Z"))
-            print("Heure à Gatineau   :", heure_locale.strftime("%Y-%m-%d %H:%M %Z"))
-            print(f"Dernier repas : {heure_locale.strftime('%H:%M')}")
-
-except OperationFailure as e:
-    print("Erreur d'authentification ou de droits :", e)
-except ConnectionFailure as e:
-    print("Cluster injoignable (adresse IP autorisée dans Network Access ?) :", e)
+client.close()
 ```
 
-Dans Atlas, ouvrir **Data Explorer** et vérifier que la base `db-demo`
-(ou le nom choisi dans `MONGODB_BASE`) contient la collection `evenements`
-et le document inséré. Les noms `aquarium_id` et `repas` sont ceux de la démonstration.
+## Vérifier le projet
 
-## Créer une collection time series
-
-Définir cette fonction, puis appeler `creer_collections(db)` à l'intérieur
-du bloc `with MongoClient(...)`, après la sélection de la base.
-Elle crée `lectures` uniquement si cette collection n'existe pas déjà.
-
-```python
-def creer_collections(db):
-    """Crée les collections avec options, sans modifier celles déjà présentes."""
-    if "lectures" not in db.list_collection_names():
-        db.create_collection(
-            "lectures",
-            timeseries={
-                "timeField": "horodatage",
-                "metaField": "aquarium_id",
-                "granularity": "minutes",
-            },
-            expireAfterSeconds=604800,  # 7 jours
-        )
-        print("Collection time series 'lectures' créée")
-```
-
-Le champ `horodatage` doit contenir une date BSON (un `datetime` Python lors
-de l'insertion). MongoDB supprime les anciennes données en arrière-plan :
-l'expiration n'est pas une suppression immédiate à la seconde près.
+- Lancer `python -m ingestion.service_ingestion` : le message « Connecté au broker MQTT » confirme la connexion, et les collections sont créées dans MongoDB.

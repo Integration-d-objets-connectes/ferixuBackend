@@ -4,7 +4,6 @@
 """Configuration centrale du Raspberry Pi, broches en numérotation BCM."""
 from pathlib import Path
 from os import getenv
-from zoneinfo import ZoneInfo
 
 from dotenv import load_dotenv
 
@@ -72,7 +71,6 @@ HUMIDITE_BRUTE_HUMIDE = 1016
 GPIO_RELAIS = 17
 RELAIS_ACTIF_HAUT = True
 FUSEAU_HORAIRE = "America/Toronto"
-FUSEAU_LOCAL = ZoneInfo(FUSEAU_HORAIRE)
 FICHIER_ETAT = RACINE / "donnees" / "etat.json"
 
 TOPIC_COMMANDES = "ferixu/commandes"
