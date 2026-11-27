@@ -152,7 +152,9 @@ def enregistrer_lumiere(donnees: dict, horodatage: datetime) -> None:
             "lux": donnees["lux"],
         }
     )
-    mettre_a_jour_plante(donnees["plante_id"], {"lux": donnees["lux"]}, horodatage)
+    ecrire_dans_plante(
+        donnees["plante_id"], horodatage, champs_a_remplacer={"lux": donnees["lux"]}
+    )
     print(f"[{horodatage}] Lumière : {donnees['lux']} lux")
 
 
@@ -178,14 +180,14 @@ def enregistrer_sol(donnees: dict, horodatage: datetime) -> None:
 
     plante_id = donnees["plante_id"]
     temperature_c = donnees["temperature_c"]
-    champs = {
+    mesures_du_sol = {
         "temperature_c": temperature_c,
         "humidite_brut": humidite_brut,
     }
     db.Temperature_humidite.insert_one(
-        {"horodatage": horodatage, "plante_id": plante_id, **champs}
+        {"horodatage": horodatage, "plante_id": plante_id, **mesures_du_sol}
     )
-    mettre_a_jour_plante(plante_id, champs, horodatage)
+    ecrire_dans_plante(plante_id, horodatage, champs_a_remplacer=mesures_du_sol)
     print(f"[{horodatage}] Sol : {temperature_c} °C, humidité {humidite_brut}")
 
 
@@ -198,7 +200,9 @@ def enregistrer_eau(donnees: dict, horodatage: datetime) -> None:
         horodatage: Date de la lecture du flotteur, déjà convertie en UTC.
     """
 
-    mettre_a_jour_plante(donnees["plante_id"], {"eau_vide": donnees["vide"]}, horodatage)
+    ecrire_dans_plante(
+        donnees["plante_id"], horodatage, champs_a_remplacer={"eau_vide": donnees["vide"]}
+    )
     print(f"[{horodatage}] Réservoir vide : {donnees['vide']}")
 
 
@@ -220,13 +224,8 @@ def enregistrer_arrosage(donnees: dict, horodatage: datetime) -> None:
             "auto": donnees["auto"],
         }
     )
-    db.Plante.update_one(
-        {"id": donnees["plante_id"]},
-        {
-            "$max": {"dernier_arrosage": horodatage, "horodatage": horodatage},
-            "$setOnInsert": PLANTE_INITIALE,
-        },
-        upsert=True,
+    ecrire_dans_plante(
+        donnees["plante_id"], horodatage, mettre_a_jour_dernier_arrosage=True
     )
     print(f"[{horodatage}] Arrosage (auto : {donnees['auto']})")
 
@@ -241,40 +240,44 @@ def enregistrer_configuration(plante_id: int, parametres: dict, horodatage: date
         parametres: Dictionnaire avec humidite_min (pourcentage) et lux_min (lux).
         horodatage: Date du message de statut ou de configuration en UTC.
     """
-    mettre_a_jour_plante(
+    ecrire_dans_plante(
         plante_id,
-        {
+        horodatage,
+        champs_a_remplacer={
             "seuil_humidite": parametres["humidite_min"],
             "seuil_luminosite": parametres["lux_min"],
         },
-        horodatage,
     )
 
 
-def mettre_a_jour_plante(plante_id: int, champs: dict, horodatage: datetime) -> None:
-    """Remplace les champs reçus dans Plante et conserve l’horodatage le plus récent.
+def ecrire_dans_plante(
+    plante_id: int,
+    horodatage: datetime,
+    *,
+    champs_a_remplacer: dict | None = None,
+    mettre_a_jour_dernier_arrosage: bool = False,
+) -> None:
+    """Effectue la mise à jour de la collection Plante utilisée par l’accueil.
 
-    Lors de la première écriture pour cet identifiant, initialise aussi le nom,
-    l’intervalle d’arrosage et le champ utilisateur_id.
+    Applique les valeurs reçues avec $set et fait avancer les dates avec $max.
+    L’upsert crée la fiche avec ses valeurs initiales si elle est absente.
 
     Args:
         plante_id: Identifiant du document Plante à mettre à jour ou à créer.
-        champs: Paires champ-valeur à remplacer dans le document avec MongoDB $set.
-        horodatage: Date UTC du message, comparée à celle déjà stockée avec $max.
+        horodatage: Date UTC du message.
+        champs_a_remplacer: Mesures, état du réservoir ou seuils à copier.
+        mettre_a_jour_dernier_arrosage: Utilise aussi la date du message pour
+            dernier_arrosage si elle est plus récente.
     """
+    dates_a_actualiser = {"horodatage": horodatage}
+    if mettre_a_jour_dernier_arrosage:
+        dates_a_actualiser["dernier_arrosage"] = horodatage
 
-    db.Plante.update_one(
-        {"id": plante_id},
-        {
-            "$set": champs,
-            # $max : garde la date la plus récente
-            "$max": {"horodatage": horodatage},
-            # Seulement à la création du document (upsert)
-            "$setOnInsert": PLANTE_INITIALE,
-        },
-        # Mettre à jour ou insérer s'il n'existe pas.
-        upsert=True,
-    )
+    modifications = {"$max": dates_a_actualiser, "$setOnInsert": PLANTE_INITIALE}
+    if champs_a_remplacer:
+        modifications["$set"] = champs_a_remplacer
+
+    db.Plante.update_one({"id": plante_id}, modifications, upsert=True)
 
 
 # Point d’entrée du service
