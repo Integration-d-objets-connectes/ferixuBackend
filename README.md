@@ -98,6 +98,9 @@ tail -f donnees/lectures_capteurs.jsonl
 
 Arrêt par `Ctrl+C`. Les valeurs de configuration restent explicites dans `config.py` pour faciliter la lecture.
 
+Pour essayer l’accueil et les graphiques avec une plante fictive, charger les
+[données de démonstration dans MongoDB](mongodb/README.md#données-de-démonstration).
+
 ### Lancer la maquette Web (UI)
 
 Pour visualiser la maquette de l'application :

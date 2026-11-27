@@ -67,3 +67,23 @@ client.close()
 ## Vérifier le projet
 
 - Lancer `python -m ingestion.service_ingestion`. Le message « Connecté au broker MQTT » confirme la connexion. Vérifier ensuite l’arrivée des mesures et des arrosages dans MongoDB.
+
+## Données de démonstration
+
+Avec une instance MongoDB locale en cours d’exécution, lancer cette commande
+depuis la racine du backend.
+
+```bash
+mongosh "mongodb://127.0.0.1:27017" --file mongodb/donnees_test.js
+```
+
+Le script remplit la base `ferixu_demo` avec la plante `1` (Basilic de
+démonstration), 12 heures de mesures simulées, deux arrosages récents, une
+configuration appliquée et un résultat de commande. Une nouvelle exécution
+ajoute les horodatages de mesures manquants et actualise les exemples
+d’arrosage et d’activité.
+
+Pour lire ces données dans l’application, lancer `ferixuFastApi` avec
+`MONGODB_URI=mongodb://127.0.0.1:27017` et `MONGODB_BASE=ferixu_demo`. L’accueil
+peut lire la plante `1` et les graphiques peuvent afficher son historique de
+la dernière journée. Ces données sont lisibles sans Raspberry Pi.
