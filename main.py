@@ -53,6 +53,7 @@ def main() -> None:
         "statut": config.TOPIC_STATUT,
         "resultat": config.TOPIC_RESULTAT,
         "arrosage": config.TOPIC_ARROSAGE,
+        "configuration": config.TOPIC_CONFIGURATION,
     }
 
     def emettre(nom: str, mesure: dict) -> None:
@@ -72,7 +73,11 @@ def main() -> None:
             mesures = mesures_en_attente.copy()
             mesures_en_attente.clear()
         for topic, mesure in mesures:
-            publicateur.publier(topic, mesure)
+            # Retenue : l'ingestion et le client voient la dernière configuration
+            #   appliquée, même s'ils se connectent plus tard (démo du cours).
+            publicateur.publier(
+                topic, mesure, retenir=topic == config.TOPIC_CONFIGURATION
+            )
 
     def boucle_publication() -> None:
         """Publie périodiquement les mesures jusqu'à la demande d'arrêt.
@@ -140,12 +145,14 @@ def main() -> None:
                 ) as erreur:
                     resultat = {
                         "id": commande.get("id"),
+                        "action": commande.get("action"),
                         "succes": False,
                         "message": str(erreur),
                     }
                 else:
                     resultat = {
                         "id": commande.get("id"),
+                        "action": commande.get("action"),
                         "succes": True,
                         "message": "Commande exécutée.",
                     }

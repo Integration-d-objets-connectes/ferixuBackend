@@ -282,6 +282,9 @@ class Controleur:
             "arrosage",
             {
                 "auto": mode == "automatique",
+                # automatique, manuel ou test, pour l'historique des activités
+                "mode": mode,
+                "duree": self.etat["arrosages"][-1]["duree"],
                 "horodatage": self.etat["arrosages"][-1]["horodatage"],
             },
         )
@@ -367,6 +370,8 @@ class Controleur:
             self.etat["parametres"] = p
             self.derniere_lumiere = None
             self.sauvegarder()
+            # Confirme la configuration appliquée à l'ingestion et au client
+            self.emettre("configuration", dict(p))
         elif action == "tester_feu":
             self.debut_test = monotone
             self.fin_test = monotone + 3

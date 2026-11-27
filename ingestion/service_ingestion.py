@@ -8,13 +8,15 @@ import json
 from datetime import datetime, timezone
 
 import paho.mqtt.client as mqtt
-from pymongo import MongoClient
+from pymongo import MongoClient, ReturnDocument
 from pymongo.database import Database
 from pymongo.errors import PyMongoError
 
 import config
 
 FICHIER_DONNEES = config.RACINE / "donnees" / "lectures_capteurs.jsonl"
+# Nom donné à la plante à la création de son document (voir documentation/README.md)
+NOM_PLANTE = "Basilic"
 
 
 def preparer_base(db: Database) -> None:
@@ -49,6 +51,11 @@ def preparer_base(db: Database) -> None:
         )
         print("Collection time series Temperature_humidite créée")
 
+    # Index des collections classiques : l'API filtre par plante et trie par date
+    db.Arrosage.create_index([("plante_id", 1), ("horodatage", 1)])
+    db.evenements.create_index([("plante_id", 1), ("horodatage", 1)])
+    db.Plante.create_index("id", unique=True)
+
 
 def mettre_a_jour_plante(plante_id: int, champs: dict, horodatage: datetime) -> None:
     """Copie les dernières valeurs dans le document de la plante (créé s'il n'existe pas).
@@ -61,10 +68,35 @@ def mettre_a_jour_plante(plante_id: int, champs: dict, horodatage: datetime) -> 
 
     db.Plante.update_one(
         {"id": plante_id},
-        # $max : garde la date la plus récente
-        {"$set": champs, "$max": {"horodatage": horodatage}},
+        {
+            "$set": champs,
+            # $max : garde la date la plus récente
+            "$max": {"horodatage": horodatage},
+            # Seulement à la création du document (upsert)
+            "$setOnInsert": {"nom": NOM_PLANTE},
+        },
         # Mettre à jour ou insérer s'il n'existe pas.
         upsert=True,
+    )
+
+
+def ajouter_evenement(plante_id: int, type_evenement: str, details: dict, horodatage: datetime) -> None:
+    """Ajoute une activité à l'historique « evenements », comme dans la démo du cours.
+
+    Args:
+        plante_id (int): l'identifiant de la plante (référence)
+        type_evenement (str): « etat », « configuration » ou « commande »
+        details (dict): les informations propres à l'événement
+        horodatage (datetime): l'heure de l'événement (UTC)
+    """
+
+    db.evenements.insert_one(
+        {
+            "horodatage": horodatage,
+            "plante_id": plante_id,
+            "type": type_evenement,
+            "details": details,
+        }
     )
 
 
@@ -91,13 +123,16 @@ def enregistrer_sol(donnees: dict, horodatage: datetime) -> None:
     """Ajoute une mesure de température et d'humidité et la copie dans la plante.
 
     Args:
-        donnees (dict): message reçu du Pi, contenant « temperature_c » et « humidite_brute »
+        donnees (dict): message reçu du Pi, contenant « temperature_c », « humidite_brute »
+            et « humidite_pct »
         horodatage (datetime): l'heure de la mesure
     """
 
     champs = {
         "temperature_c": donnees["temperature_c"],
         "humidite_brut": donnees["humidite_brute"],
+        # Pourcentage calibré par le Pi (None sans calibration), utilisé par les seuils
+        "humidite_pct": donnees.get("humidite_pct"),
     }
     db.Temperature_humidite.insert_one(
         {"horodatage": horodatage, "plante_id": donnees["plante_id"], **champs}
@@ -122,7 +157,7 @@ def enregistrer_arrosage(donnees: dict, horodatage: datetime) -> None:
     """Ajoute un arrosage à l'historique et met à jour le dernier arrosage de la plante.
 
     Args:
-        donnees (dict): message reçu du Pi, contenant « auto »
+        donnees (dict): message reçu du Pi, contenant « auto », « mode » et « duree »
         horodatage (datetime): l'heure de l'arrosage
     """
 
@@ -131,6 +166,9 @@ def enregistrer_arrosage(donnees: dict, horodatage: datetime) -> None:
             "horodatage": horodatage,
             "plante_id": donnees["plante_id"],
             "auto": donnees["auto"],
+            # automatique, manuel ou test (absents des messages d'avant cette version)
+            "mode": donnees.get("mode"),
+            "duree": donnees.get("duree"),
         }
     )
     db.Plante.update_one(
@@ -142,26 +180,106 @@ def enregistrer_arrosage(donnees: dict, horodatage: datetime) -> None:
 
 
 def enregistrer_statut(donnees: dict, horodatage: datetime) -> None:
-    """Copie les seuils appliqués par le Pi dans la plante.
+    """Copie l'état du système dans la plante et historise les changements d'état.
+
+    Le Pi publie son statut toutes les 5 s : seul un changement de couleur
+    (vert, jaune, rouge, inconnu) devient un événement « etat » (alerte).
 
     Args:
-        donnees (dict): message reçu du Pi, contenant « parametres »
+        donnees (dict): message reçu du Pi (« parametres », « couleur », ...)
         horodatage (datetime): l'heure du statut
     """
 
     parametres = donnees["parametres"]
+    prochain_auto = donnees.get("prochain_auto")
+    champs = {
+        "couleur": donnees["couleur"],
+        "heures_lumiere": donnees.get("heures_lumiere"),
+        "pompe_active": donnees.get("pompe_active"),
+        "erreurs": donnees.get("erreurs", {}),
+        "prochain_auto": datetime.fromisoformat(prochain_auto) if prochain_auto else None,
+        "seuil_humidite": parametres["humidite_min"],
+        "seuil_luminosite": parametres["lux_min"],
+        "duree_arrosage": parametres["duree_arrosage"],
+        "automatique": parametres["automatique"],
+    }
+    # ReturnDocument.BEFORE : renvoie la plante avant la mise à jour, pour comparer la couleur
+    avant = db.Plante.find_one_and_update(
+        {"id": donnees["plante_id"]},
+        {
+            "$set": champs,
+            "$max": {"horodatage": horodatage},
+            "$setOnInsert": {"nom": NOM_PLANTE},
+        },
+        projection={"couleur": 1},
+        upsert=True,
+        return_document=ReturnDocument.BEFORE,
+    )
+    ancienne = avant.get("couleur") if avant else None
+    if ancienne != donnees["couleur"]:
+        ajouter_evenement(
+            donnees["plante_id"],
+            "etat",
+            {"ancienne": ancienne, "nouvelle": donnees["couleur"], "erreurs": champs["erreurs"]},
+            horodatage,
+        )
+        print(f"[{horodatage}] État : {ancienne} → {donnees['couleur']}")
+
+
+def enregistrer_configuration(donnees: dict, horodatage: datetime, retenu: bool) -> None:
+    """Enregistre la configuration appliquée par le Pi : historique et copie dans la plante.
+
+    Args:
+        donnees (dict): message reçu du Pi : humidite_min, lux_min, duree_arrosage, automatique
+        horodatage (datetime): moment où le Pi a appliqué la configuration (UTC)
+        retenu (bool): True si le message est retenu par le broker (déjà reçu avant) :
+            la plante est mise à jour, mais aucun événement n'est ajouté à l'historique.
+    """
+
+    configuration = {
+        cle: donnees[cle] for cle in ("humidite_min", "lux_min", "duree_arrosage", "automatique")
+    }
+    # Message retenu = déjà reçu avant (ex. redémarrage de l'ingestion) : pas de doublon
+    if not retenu:
+        ajouter_evenement(donnees["plante_id"], "configuration", configuration, horodatage)
+
     mettre_a_jour_plante(
         donnees["plante_id"],
         {
-            "seuil_humidite": parametres["humidite_min"],
-            "seuil_luminosite": parametres["lux_min"],
+            "seuil_humidite": configuration["humidite_min"],
+            "seuil_luminosite": configuration["lux_min"],
+            "duree_arrosage": configuration["duree_arrosage"],
+            "automatique": configuration["automatique"],
         },
         horodatage,
     )
-    print(f"[{horodatage}] Statut : seuils {parametres['humidite_min']} %, {parametres['lux_min']} lux")
+    print(f"[{horodatage}] Configuration appliquée : {configuration}")
+
+
+def enregistrer_resultat(donnees: dict, horodatage: datetime) -> None:
+    """Historise le résultat d'une commande manuelle (arrosage, tests, paramètres).
+
+    Args:
+        donnees (dict): message reçu du Pi : id, action, succes, message
+        horodatage (datetime): l'heure du traitement de la commande
+    """
+
+    ajouter_evenement(
+        donnees["plante_id"],
+        "commande",
+        {
+            "id": donnees["id"],
+            "action": donnees.get("action"),
+            "succes": donnees["succes"],
+            "message": donnees["message"],
+        },
+        horodatage,
+    )
+    print(f"[{horodatage}] Commande {donnees.get('action')} : {donnees['message']}")
 
 
 def on_connect(client, userdata, flags, reason_code, properties):
+    """S'abonne aux topics du Pi dès que le broker accepte la connexion."""
     if reason_code.is_failure:
         print(f"Échec de connexion au broker : {reason_code}")
         return
@@ -173,17 +291,20 @@ def on_connect(client, userdata, flags, reason_code, properties):
     client.subscribe(config.TOPIC_EAU, qos=1)
     client.subscribe(config.TOPIC_ARROSAGE, qos=1)
     client.subscribe(config.TOPIC_STATUT, qos=1)
+    client.subscribe(config.TOPIC_CONFIGURATION, qos=1)
+    client.subscribe(config.TOPIC_RESULTAT, qos=1)
 
 
 def on_message(client, userdata, msg):
+    """Écrit chaque message reçu dans le fichier JSONL, puis dans MongoDB selon son topic."""
     try:
         donnees = json.loads(msg.payload.decode("utf-8"))
-    except (UnicodeDecodeError, ValueError):
+        # Le Pi envoie l'heure UTC d'acquisition en texte ISO : on la convertit
+        # en date pour MongoDB (comme dans la démo du cours)
+        horodatage = datetime.fromisoformat(donnees["horodatage"]).astimezone(timezone.utc)
+    except (UnicodeDecodeError, ValueError, KeyError, TypeError, AttributeError):
         print(f"Message invalide ignoré : {msg.payload}")
         return
-
-    # Heure de réception, en UTC
-    horodatage = datetime.now(timezone.utc)
 
     # Copie brute de chaque message reçu
     with open(FICHIER_DONNEES, "a", encoding="utf-8") as fichier:
@@ -200,6 +321,10 @@ def on_message(client, userdata, msg):
             enregistrer_arrosage(donnees, horodatage)
         elif msg.topic == config.TOPIC_STATUT:
             enregistrer_statut(donnees, horodatage)
+        elif msg.topic == config.TOPIC_CONFIGURATION:
+            enregistrer_configuration(donnees, horodatage, msg.retain)
+        elif msg.topic == config.TOPIC_RESULTAT:
+            enregistrer_resultat(donnees, horodatage)
     except KeyError as erreur:
         print(f"Champ manquant {erreur}, message ignoré : {donnees}")
     except PyMongoError as erreur:

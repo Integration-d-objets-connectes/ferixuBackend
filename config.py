@@ -81,3 +81,5 @@ TOPIC_COMMANDES = "ferixu/commandes"
 TOPIC_STATUT = "ferixu/statut"
 TOPIC_RESULTAT = "ferixu/resultat"
 TOPIC_ARROSAGE = "ferixu/arrosage"
+# Configuration réellement appliquée, publiée par le Pi (retenue), comme dans la démo
+TOPIC_CONFIGURATION = "ferixu/configuration"
