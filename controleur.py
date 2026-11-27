@@ -11,8 +11,9 @@ from datetime import datetime, timedelta, timezone
 from copy import deepcopy
 from zoneinfo import ZoneInfo
 import json
-import math
 from pathlib import Path
+
+from models import Configuration
 
 
 @dataclass(frozen=True)
@@ -71,21 +72,9 @@ def valider_parametres(p: dict) -> None:
     Args:
         p (dict): Paramètres à valider.
     """
-    for cle, mini, maxi in (
-        ("humidite_min", 0, 100),
-        ("lux_min", 1, 200000),
-        ("duree_arrosage", 0.1, 3),
-    ):
-        v = p[cle]
-        if (
-            isinstance(v, bool)
-            or not isinstance(v, (int, float))
-            or not math.isfinite(v)
-            or not mini <= v <= maxi
-        ):
-            raise ValueError(f"Paramètre invalide : {cle} ({mini} à {maxi}).")
-    if type(p["automatique"]) is not bool:
-        raise ValueError("Le mode automatique doit être un booléen.")
+    # Validation pydantic, comme dans la démo du cours.
+    # ValidationError hérite de ValueError : main.py l'attrape déjà.
+    Configuration.model_validate(p)
 
 
 class Controleur:
