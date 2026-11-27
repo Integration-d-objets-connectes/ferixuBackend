@@ -1,5 +1,7 @@
 # @author Félix Lachapelle
 # @author Éric
 
-"""Export du pilote de feu, comme dans le paquet actionneurs de la démo."""
+"""Exports des pilotes d’actionneurs, comme dans la démo du cours."""
+
 from .feu_tricolore import FeuCirculation
+from .pompe import Pompe

@@ -6,3 +6,4 @@ gpiozero>=2,<3
 Adafruit-Blinka>=8,<10
 adafruit-circuitpython-bh1750>=1,<2
 adafruit-circuitpython-seesaw>=1,<2
+pydantic==2.13.4

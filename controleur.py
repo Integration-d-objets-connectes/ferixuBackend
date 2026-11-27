@@ -1,27 +1,27 @@
-"""Règles EF04 à EF24; tout accès matériel reste dans le thread principal."""
+# @author Félix Lachapelle
+# @author Éric
+# @author Codex (coéquipier IA, extraction du contrôleur)
+
+"""Applique les règles de la plante et conserve les données utiles au redémarrage."""
 
 from __future__ import annotations
 
-from typing import Any, Callable
+import json
+import time
+from collections.abc import Callable
+from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from copy import deepcopy
-from zoneinfo import ZoneInfo
-import json
-import math
 from pathlib import Path
+from zoneinfo import ZoneInfo
+
+import config
+from actionneurs import FeuCirculation, Pompe
+from capteurs import Flotteur
+from models import Configuration
 
 
-@dataclass(frozen=True)
-class LectureLumiere:
-    """Conserve une lecture de luminosité et son horodatage."""
-    horodatage: datetime
-    lux: float
-
-
-def utc() -> datetime:
-    """Fournit l’horloge UTC par défaut, remplaçable dans les tests séparés."""
-    return datetime.now(timezone.utc)
+# 1. Charger et valider l’état persistant
 
 
 class ErreurPersistance(Exception):
@@ -32,7 +32,7 @@ def charger_etat(chemin: str | Path) -> dict:
     """Charge et valide l'état persistant, ou crée les valeurs initiales.
 
     Args:
-        chemin (str | Path): Chemin du fichier d'état.
+        chemin: Chemin du fichier d'état.
 
     Returns:
         dict: État chargé ou état initial.
@@ -62,37 +62,43 @@ def charger_etat(chemin: str | Path) -> dict:
     return etat
 
 
-def valider_parametres(p: dict) -> None:
+def valider_parametres(parametres: dict) -> None:
     """Vérifie les plages des paramètres et le type du mode automatique.
 
     Args:
-        p (dict): Paramètres à valider.
+        parametres: Seuils, durée d’arrosage et mode automatique.
     """
-    for cle, mini, maxi in (
-        ("humidite_min", 0, 100),
-        ("lux_min", 1, 200000),
-        ("duree_arrosage", 0.1, 3),
-    ):
-        v = p[cle]
-        if (
-            isinstance(v, bool)
-            or not isinstance(v, (int, float))
-            or not math.isfinite(v)
-            or not mini <= v <= maxi
-        ):
-            raise ValueError(f"Paramètre invalide : {cle} ({mini} à {maxi}).")
-    if type(p["automatique"]) is not bool:
-        raise ValueError("Le mode automatique doit être un booléen.")
+    # Validation pydantic, comme dans la démo du cours.
+    Configuration.model_validate(parametres)
+
+
+# 2. Appliquer les règles de la plante
+
+
+@dataclass(frozen=True)
+class LectureLumiere:
+    """Conserve une lecture de luminosité et son horodatage."""
+
+    horodatage: datetime
+    lux: float
+
+
+def utc() -> datetime:
+    """Renvoie l’heure courante en UTC."""
+    return datetime.now(timezone.utc)
 
 
 class Controleur:
     """Coordonne les mesures, les commandes et les règles de sécurité du système."""
+
+    # État persistant et lectures
+
     def __init__(
         self,
         chemin: str | Path,
-        flotteur: Any,
-        pompe: Any,
-        feu: Any,
+        flotteur: Flotteur,
+        pompe: Pompe,
+        feu: FeuCirculation,
         emettre: Callable[[str, dict], None],
         maintenant: Callable[[], datetime] = utc,
         zone: str = "America/Toronto",
@@ -100,13 +106,13 @@ class Controleur:
         """Initialise le contrôleur, ses périphériques et son état persistant.
 
         Args:
-            chemin (str | Path): Chemin du fichier d'état.
-            flotteur (Any): Capteur du niveau du réservoir.
-            pompe (Any): Actionneur de la pompe.
-            feu (Any): Actionneur du feu tricolore.
-            emettre (Callable[[str, dict], None]): Fonction qui transmet les événements.
-            maintenant (Callable[[], datetime]): Fonction fournissant la date et l’heure courantes.
-            zone (str): Nom du fuseau horaire local.
+            chemin: Chemin du fichier d'état.
+            flotteur: Capteur du niveau du réservoir.
+            pompe: Actionneur de la pompe.
+            feu: Actionneur du feu tricolore.
+            emettre: Fonction qui transmet les événements.
+            maintenant: Fonction fournissant la date et l’heure courantes.
+            zone: Nom du fuseau horaire local.
         """
         self.chemin = Path(chemin)
         self.etat = charger_etat(chemin)
@@ -143,16 +149,22 @@ class Controleur:
         """Enregistre et émet une mesure, en cumulant la lumière par journée locale.
 
         Args:
-            nom (str): Nom de la variable, de la mesure ou du capteur.
-            mesure (dict): Mesure à enregistrer ou à afficher.
+            nom: Clé de la mesure, soit sol, lumiere ou eau.
+            mesure: Valeurs horodatées renvoyées par le capteur.
         """
         self.mesures[nom] = mesure
         self.erreurs.pop(nom, None)
 
-        if nom != "lumiere":
-            self.emettre(nom, mesure)
-            return
+        if nom == "lumiere":
+            self.cumuler_lumiere(mesure)
+        self.emettre(nom, mesure)
 
+    def cumuler_lumiere(self, mesure: dict) -> None:
+        """Répartit l’intervalle éclairé entre les journées qu’il traverse (EF04).
+
+        Args:
+            mesure: Lecture du BH1750 avec lux et horodatage UTC.
+        """
         date = datetime.fromisoformat(mesure["horodatage"])
         if self.derniere_lumiere:
             precedente = self.derniere_lumiere.horodatage
@@ -178,7 +190,16 @@ class Controleur:
                 self.sauvegarder()
         self.derniere_lumiere = LectureLumiere(date, mesure["lux"])
 
-        self.emettre(nom, mesure)
+    def signaler_erreur(self, nom: str, erreur: Exception) -> None:
+        """Conserve l’erreur du capteur et interrompt le cumul si le BH1750 échoue.
+
+        Args:
+            nom: Clé du capteur en erreur dans le statut.
+            erreur: Exception levée lors de la lecture.
+        """
+        self.erreurs[nom] = str(erreur)
+        if nom == "lumiere":
+            self.derniere_lumiere = None
 
     def lire_eau(self) -> bool:
         """Lit le flotteur et renvoie si le niveau est suffisant et cohérent.
@@ -202,11 +223,11 @@ class Controleur:
             return False
 
     def recentes(self, nom: str, age: float) -> bool:
-        """Indique si la dernière mesure valide est âgée d'au plus age secondes.
+        """Vérifie la fraîcheur de la dernière lecture du capteur.
 
         Args:
-            nom (str): Nom de la variable, de la mesure ou du capteur.
-            age (float): Âge maximal de la mesure en secondes.
+            nom: Clé de la mesure, soit sol, lumiere ou eau.
+            age: Âge maximal de la mesure en secondes.
 
         Returns:
             bool: True si la mesure est valide et assez récente.
@@ -218,6 +239,8 @@ class Controleur:
             self.maintenant() - datetime.fromisoformat(mesure["horodatage"])
         ).total_seconds()
         return 0 <= secondes <= age
+
+    # Arrosage et feu tricolore
 
     def arrosages_recents(self) -> list[dict]:
         """Renvoie les arrosages enregistrés durant les dernières 24 heures.
@@ -233,7 +256,7 @@ class Controleur:
         ]
 
     def prochain_auto(self) -> datetime | None:
-        """Renvoie la prochaine heure permise après un arrosage automatique.
+        """Calcule la fin du délai depuis le dernier arrosage automatique.
 
         Returns:
             datetime | None: Prochaine heure permise, ou None sans arrosage automatique.
@@ -243,11 +266,26 @@ class Controleur:
             return None
         dernier = autos[-1]
         return datetime.fromisoformat(dernier["horodatage"]) + timedelta(
-            minutes=30, seconds=dernier.get("duree", 3)
+            minutes=config.INTERVALLE_ARROSAGE_MINUTES, seconds=dernier.get("duree", 3)
         )
 
+    def evaluer_arrosage_automatique(self) -> None:
+        """Évalue les conditions d’arrosage après une nouvelle mesure du sol."""
+        try:
+            self.arroser("automatique", time.monotonic())
+        except (ValueError, OSError, RuntimeError) as erreur:
+            self.erreurs["arrosage"] = str(erreur)
+
     def arroser(self, mode: str, monotone: float) -> bool:
-        """Vérifie les conditions communes et celles réservées à l'automatique."""
+        """Active la pompe après avoir vérifié les conditions d’arrosage (EF06 à EF09).
+
+        Args:
+            mode: Type d’arrosage, soit automatique, manuel ou test.
+            monotone: Temps monotone actuel en secondes.
+
+        Returns:
+            bool: True si la pompe a démarré. False si les conditions automatiques manquent.
+        """
         if self.fin_pompe is not None:
             raise ValueError("Arrosage déjà en cours.")
         if mode == "automatique":
@@ -290,6 +328,9 @@ class Controleur:
             "arrosage",
             {
                 "auto": mode == "automatique",
+                # automatique, manuel ou test, pour l'historique des activités
+                "mode": mode,
+                "duree": self.etat["arrosages"][-1]["duree"],
                 "horodatage": self.etat["arrosages"][-1]["horodatage"],
             },
         )
@@ -325,7 +366,11 @@ class Controleur:
         return self.etat["lumiere_jours"].get(jour, 0) / 3600
 
     def mettre_a_jour(self, monotone: float) -> None:
-        """Coupe la pompe à l'échéance et applique la couleur ou le test du feu."""
+        """Vérifie la pompe et actualise le feu à chaque passage de la boucle.
+
+        Args:
+            monotone: Temps monotone utilisé pour les échéances de la pompe et du feu.
+        """
         if self.fin_pompe is not None:
             # Pendant l'arrosage, vérifier aussi le flotteur à chaque passage.
             eau = self.lire_eau()
@@ -345,12 +390,14 @@ class Controleur:
         else:
             getattr(self.feu, "allumer_" + couleur)()
 
+    # Commandes de l’application et statut publié
+
     def commande(self, commande: dict, monotone: float) -> None:
         """Valide et exécute une commande récente et non encore traitée.
 
         Args:
-            commande (dict): Commande à valider et à exécuter.
-            monotone (float): Temps monotone actuel en secondes.
+            commande: Commande à valider et à exécuter.
+            monotone: Temps monotone actuel en secondes.
         """
         identifiant = commande.get("id")
         if not isinstance(identifiant, str) or not 1 <= len(identifiant) <= 100:
@@ -368,18 +415,51 @@ class Controleur:
         if action in ("arroser", "tester_pompe"):
             self.arroser("manuel" if action == "arroser" else "test", monotone)
         elif action == "parametres":
-            p = {**self.etat["parametres"], **commande["parametres"]}
-            if set(p) != set(self.etat["parametres"]):
+            parametres = {**self.etat["parametres"], **commande["parametres"]}
+            if set(parametres) != set(self.etat["parametres"]):
                 raise ValueError("Paramètre inconnu.")
-            valider_parametres(p)
-            self.etat["parametres"] = p
+            valider_parametres(parametres)
+            self.etat["parametres"] = parametres
             self.derniere_lumiere = None
             self.sauvegarder()
+            # Confirme la configuration appliquée à l'ingestion et au client
+            self.emettre("configuration", dict(parametres))
         elif action == "tester_feu":
             self.debut_test = monotone
             self.fin_test = monotone + 3
         else:
             raise ValueError("Commande inconnue.")
+
+    def traiter_commande(self, commande: object, monotone: float) -> None:
+        """Exécute une commande et publie son résultat avec son identifiant (ET05).
+
+        Args:
+            commande: Valeur JSON reçue sur le topic des commandes.
+            monotone: Temps monotone actuel en secondes.
+        """
+        if not isinstance(commande, dict):
+            print("Commande MQTT ignorée : objet JSON attendu.")
+            return
+
+        try:
+            self.commande(commande, monotone)
+        except (ValueError, KeyError, TypeError, OSError, RuntimeError) as erreur:
+            succes = False
+            message = str(erreur)
+        else:
+            succes = True
+            message = "Commande exécutée."
+
+        self.emettre(
+            "resultat",
+            {
+                "id": commande.get("id"),
+                "action": commande.get("action"),
+                "succes": succes,
+                "message": message,
+                "horodatage": self.maintenant().isoformat(),
+            },
+        )
 
     def statut(self) -> dict:
         """Construit un instantané indépendant de l’état actuel du système.
@@ -390,8 +470,8 @@ class Controleur:
         prochain = self.prochain_auto()
         aujourd_hui = self.maintenant().astimezone(self.zone).date()
         jours = {}
-        for i in reversed(range(7)):
-            jour = str(aujourd_hui - timedelta(days=i))
+        for recul in range(6, -1, -1):
+            jour = str(aujourd_hui - timedelta(days=recul))
             jours[jour] = self.etat["lumiere_jours"].get(jour, 0) / 3600
         statut = {
             "horodatage": self.maintenant().isoformat(),
@@ -406,7 +486,8 @@ class Controleur:
             "dernier_arrosage": (
                 self.etat["arrosages"][-1] if self.etat["arrosages"] else None
             ),
-            "arrosages_24h": len(self.arrosages_recents()),
+            "arrosages_en_24h": len(self.arrosages_recents()),
+            "intervalle_arrosage": config.INTERVALLE_ARROSAGE_MINUTES,
             "prochain_auto": (
                 prochain.isoformat()
                 if prochain and prochain > self.maintenant()

@@ -1,3 +1,6 @@
+# @author Félix Lachapelle
+# @author Éric
+
 """Relais de la pompe : sortie inactive au démarrage et à la fermeture."""
 
 from __future__ import annotations

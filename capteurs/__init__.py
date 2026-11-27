@@ -2,6 +2,8 @@
 # @author Éric
 
 """Exports explicites des classes, comme dans le paquet capteurs de la démo."""
+
+from .acquisition import Acquisition
 from .capteur import Capteur
 from .flotteur import Flotteur
 from .capteur_bh1750 import CapteurLumiere

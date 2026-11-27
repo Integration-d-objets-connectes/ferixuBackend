@@ -4,7 +4,6 @@
 """Configuration centrale du Raspberry Pi, broches en numérotation BCM."""
 from pathlib import Path
 from os import getenv
-from zoneinfo import ZoneInfo
 
 from dotenv import load_dotenv
 
@@ -12,37 +11,46 @@ RACINE = Path(__file__).resolve().parent
 load_dotenv(RACINE / ".env")
 
 
-def _lecture_env(nom):
-    """Lit une variable d'environnement ou renvoie une chaîne vide.
+def _lecture_env(nom: str, ancien_nom: str) -> str:
+    """Lit une variable d'environnement obligatoire, comme dans la démo du cours.
 
     Args:
-        nom (str): Nom de la variable, de la mesure ou du capteur.
+        nom (str): Nom de la variable dans le fichier .env.
+        ancien_nom (str): Nom accepté pour les installations déjà configurées.
+
+    Raises:
+        RuntimeError: Si la variable est absente ou vide.
 
     Returns:
-        str: Valeur de la variable ou chaîne vide.
+        str: Valeur de la variable.
     """
-    return getenv(nom, "")
+    valeur = getenv(nom) or getenv(ancien_nom)
+    if not valeur:
+        raise RuntimeError(f"Variable d'environnement manquante : {nom}")
+
+    return valeur
 
 
-# ---- MongoDB ---- #
-MONGODB_URI = _lecture_env("MONGODB_URI")
-MONGODB_BASE = _lecture_env("MONGODB_BASE")
-MONGODB_COLLECTION_LUMIERE = getenv("MONGODB_COLLECTION_LUMIERE", "Lumiere")
-MONGODB_COLLECTION_TEMPERATURE_HUMIDITE = getenv(
-    "MONGODB_COLLECTION_TEMPERATURE_HUMIDITE", "Temperature_humidite"
-)
-MONGODB_COLLECTION_ARROSAGE = getenv("MONGODB_COLLECTION_ARROSAGE", "Arrosage")
-MONGODB_COLLECTION_PLANTE = getenv("MONGODB_COLLECTION_PLANTE", "Plante")
+# ---- MongoDB (service d'ingestion seulement) ---- #
+# Lues sans erreur ici : le Pi n'en a pas besoin. L'ingestion vérifie leur présence.
+MONGODB_URI = getenv("MONGODB_URI", "")
+MONGODB_BASE = getenv("MONGODB_BASE", "")
 PLANTE_ID = int(getenv("PLANTE_ID", "1"))
+INTERVALLE_ARROSAGE_MINUTES = 30
 
-MQTT_HOTE = "localhost"
-MQTT_PORT = 1883
-MQTT_DELAI_SECONDES = 10
+# ---- Broker MQTT (EMQX), comme dans la démo du cours ---- #
+MQTT_HOTE = _lecture_env("MQTT_HOTE", "BROKER")
+MQTT_PORT = int(_lecture_env("MQTT_PORT", "PORT"))
+MQTT_UTILISATEUR = _lecture_env("MQTT_UTILISATEUR", "USERNAME")
+MQTT_MOT_DE_PASSE = _lecture_env("MQTT_MOT_DE_PASSE", "PASSWORD")
+# Certificat du broker EMQX pour la connexion TLS
+MQTT_CERTIFICAT_CA = RACINE / "emqxsl-ca.crt"
+
 TOPIC_EAU = "ferixu/eau"
 TOPIC_LUMIERE = "ferixu/lumiere"
 TOPIC_SOL = "ferixu/sol"
 GPIO_FLOTTEUR = 16
-# Même attribution que le config.py racine; à confirmer sur le montage réel.
+# Broches du feu tricolore; à confirmer sur le montage réel.
 GPIO_FEU_ROUGE = 23
 GPIO_FEU_JAUNE = 22
 GPIO_FEU_VERT = 27
@@ -51,25 +59,28 @@ PERIODE_LECTURE_RESERVOIR = 600
 
 # Période du thread MQTT (indépendante des périodes de lecture).
 PERIODE_PUBLICATION = 5
+# Statut complet (~1 Ko) : toutes les 60 s pour respecter le quota gratuit d'EMQX.
+# Une commande reçue provoque quand même un statut immédiat.
+PERIODE_STATUT = 60
 
 # EF03 : lecture de la luminosité toutes les minutes.
 PERIODE_LECTURE_LUMIERE = 60
 
 # EF01 et EF02 : humidité et température acquises ensemble toutes les 10 min.
-PERIODE_LECTURE_SOL = 1
-# Mesurer ces deux valeurs sur le capteur réellement utilisé avant de les remplir.
-# Sans calibration, humidite_pct reste None (null dans le JSON).]
+PERIODE_LECTURE_SOL = 600
+# Calibration mesurée sur notre capteur : valeur brute dans un sol sec (0 %)
+# et dans l'eau (100 %). Sans calibration, humidite_pct reste None (null dans le JSON).
 HUMIDITE_BRUTE_SEC = 340
 HUMIDITE_BRUTE_HUMIDE = 1016
-#dry as fuck 0% 340
-#wet as fuck 100% 1016
 # Compléter selon le montage réel; None laisse la pompe désactivée.
 GPIO_RELAIS = 17
 RELAIS_ACTIF_HAUT = True
 FUSEAU_HORAIRE = "America/Toronto"
-FUSEAU_LOCAL = ZoneInfo(FUSEAU_HORAIRE)
 FICHIER_ETAT = RACINE / "donnees" / "etat.json"
+
 TOPIC_COMMANDES = "ferixu/commandes"
 TOPIC_STATUT = "ferixu/statut"
 TOPIC_RESULTAT = "ferixu/resultat"
 TOPIC_ARROSAGE = "ferixu/arrosage"
+# Configuration réellement appliquée, publiée par le Pi (retenue), comme dans la démo
+TOPIC_CONFIGURATION = "ferixu/configuration"

@@ -1,195 +1,348 @@
 # @author Éric et Felix
 
-"""Abonnement MQTT et enregistrement des messages en JSONL et dans MongoDB."""
+"""Reçoit les messages MQTT du Pi et alimente les collections de l’application.
+
+Les champs stockés sont décrits dans documentation/README.md.
+"""
+
 import json
-import math
 from datetime import datetime, timezone
 
 import paho.mqtt.client as mqtt
 from pymongo import MongoClient
+from pymongo.database import Database
 from pymongo.errors import PyMongoError
 
 import config
 
-DOSSIER_DONNEES = config.RACINE / "donnees"
-FICHIER_DONNEES = DOSSIER_DONNEES / "lectures_capteurs.jsonl"
-
-if not (config.MONGODB_URI and config.MONGODB_BASE):
-    raise ValueError("Renseignez MONGODB_URI et MONGODB_BASE dans .env.")
-
-# Connexion à MongoDB et sélection des collections utilisées par le Raspberry Pi.
-mongo = MongoClient(config.MONGODB_URI, serverSelectionTimeoutMS=5000)
-base = mongo[config.MONGODB_BASE]
-lumiere = base[config.MONGODB_COLLECTION_LUMIERE]
-temperature_humidite = base[config.MONGODB_COLLECTION_TEMPERATURE_HUMIDITE]
-arrosage = base[config.MONGODB_COLLECTION_ARROSAGE]
-plante = base[config.MONGODB_COLLECTION_PLANTE]
-
-TOPICS = (
-    config.TOPIC_EAU,
-    config.TOPIC_LUMIERE,
-    config.TOPIC_SOL,
-    config.TOPIC_STATUT,
-    config.TOPIC_ARROSAGE,
-)
+FICHIER_DONNEES = config.RACINE / "donnees" / "lectures_capteurs.jsonl"
+# Nom donné à la plante à la création de son document (voir documentation/README.md)
+NOM_PLANTE = "Basilic"
+PLANTE_INITIALE = {
+    "nom": NOM_PLANTE,
+    "intervalle_arrosage": config.INTERVALLE_ARROSAGE_MINUTES,
+    "utilisateur_id": None,
+}
 
 
-def initialiser_indexes():
-    """Crée les index et les collections automatiquement, sans effacer de données."""
-    for collection in (lumiere, temperature_humidite, arrosage):
-        collection.create_index([("plante_id", 1), ("horodatage", -1)], unique=True)
-    plante.create_index("id", unique=True)
+# 1. Préparer les séries temporelles
 
 
-def convertir_horodatage(valeur):
-    """Convertit une date ISO 8601 avec fuseau en date BSON UTC."""
-    if not isinstance(valeur, str):
-        raise ValueError("L'horodatage doit être une chaîne ISO 8601.")
-    date = datetime.fromisoformat(valeur)
-    if date.tzinfo is None:
-        raise ValueError("L'horodatage doit préciser son fuseau horaire.")
-    date = date.astimezone(timezone.utc)
-    # BSON conserve les millisecondes; utiliser la même précision pour les doublons.
-    return date.replace(microsecond=date.microsecond // 1000 * 1000)
+def preparer_base(db: Database) -> None:
+    """Crée les séries temporelles Lumiere et Temperature_humidite si elles sont absentes.
 
+    Les deux séries utilisent horodatage comme date et plante_id comme métadonnée.
+    Les collections déjà présentes sont conservées.
 
-def verifier_nombre(valeur, nom, minimum=None, maximum=None):
-    """Refuse les valeurs manquantes, booléennes, infinies et hors plage."""
-    if (
-        isinstance(valeur, bool)
-        or not isinstance(valeur, (int, float))
-        or not math.isfinite(valeur)
-        or (minimum is not None and valeur < minimum)
-        or (maximum is not None and valeur > maximum)
-    ):
-        raise ValueError(f"Valeur invalide : {nom}.")
-    return valeur
+    Args:
+        db: Base MongoDB configurée pour le projet.
+    """
 
+    collections = db.list_collection_names()
 
-def enregistrer_historique(collection, document):
-    """Ajoute une mesure une seule fois, même si MQTT la livre de nouveau."""
-    collection.update_one(
-        {"plante_id": document["plante_id"], "horodatage": document["horodatage"]},
-        {"$setOnInsert": document},
-        upsert=True,
-    )
-
-
-def mettre_a_jour_plante(plante_id, champs, horodatage):
-    """Met à jour les mesures sans toucher au nom ni au propriétaire de la plante."""
-    plante.update_one(
-        {"id": plante_id},
-        {"$set": champs, "$max": {"horodatage": horodatage}},
-        upsert=True,
-    )
-
-
-def enregistrer_donnees(topic, mesure):
-    """Enregistre les historiques et l'état courant selon le topic MQTT."""
-    plante_id = mesure.get("plante_id", config.PLANTE_ID)
-    if type(plante_id) is not int or plante_id <= 0:
-        raise ValueError("plante_id doit être un entier positif.")
-    horodatage = convertir_horodatage(mesure["horodatage"])
-    document = {"plante_id": plante_id, "horodatage": horodatage}
-
-    if topic == config.TOPIC_LUMIERE:
-        champs = {"lux": verifier_nombre(mesure.get("lux"), "lux", minimum=0)}
-        enregistrer_historique(lumiere, {**document, **champs})
-        mettre_a_jour_plante(plante_id, champs, horodatage)
-    elif topic == config.TOPIC_SOL:
-        champs = {
-            "temperature_c": verifier_nombre(mesure.get("temperature_c"), "temperature_c", -40, 85),
-            "humidite_brut": verifier_nombre(
-                mesure.get("humidite_brute", mesure.get("humidite_brut")), "humidite_brut", 0, 65535
-            ),
-        }
-        enregistrer_historique(temperature_humidite, {**document, **champs})
-        mettre_a_jour_plante(plante_id, champs, horodatage)
-    elif topic == config.TOPIC_EAU:
-        if type(mesure.get("vide")) is not bool:
-            raise ValueError("vide doit être un booléen.")
-        mettre_a_jour_plante(plante_id, {"eau_vide": mesure["vide"]}, horodatage)
-    elif topic == config.TOPIC_ARROSAGE:
-        if type(mesure.get("auto")) is not bool:
-            raise ValueError("auto doit être un booléen.")
-        enregistrer_historique(arrosage, {**document, "auto": mesure["auto"]})
-        plante.update_one(
-            {"id": plante_id},
-            {"$max": {"dernier_arrosage": horodatage, "horodatage": horodatage}},
-            upsert=True,
+    if "Lumiere" not in collections:
+        # Une collection time series doit être créée avant la première insertion
+        db.create_collection(
+            "Lumiere",
+            timeseries={
+                "timeField": "horodatage",
+                "metaField": "plante_id",
+                "granularity": "minutes",
+            },
         )
-    elif topic == config.TOPIC_STATUT:
-        parametres = mesure.get("parametres", {})
-        if not isinstance(parametres, dict):
-            raise ValueError("parametres doit être un objet JSON.")
-        champs = {}
-        if "humidite_min" in parametres:
-            champs["seuil_humidite"] = verifier_nombre(parametres["humidite_min"], "humidite_min", 0, 100)
-        if "lux_min" in parametres:
-            champs["seuil_luminosite"] = verifier_nombre(parametres["lux_min"], "lux_min", 1, 200000)
-        if champs:
-            mettre_a_jour_plante(plante_id, champs, horodatage)
+        print("Collection time series Lumiere créée")
+
+    if "Temperature_humidite" not in collections:
+        db.create_collection(
+            "Temperature_humidite",
+            timeseries={
+                "timeField": "horodatage",
+                "metaField": "plante_id",
+                "granularity": "seconds",
+            },
+        )
+        print("Collection time series Temperature_humidite créée")
+
+
+# 2. Recevoir les messages MQTT et les acheminer
 
 
 def on_connect(client, userdata, flags, reason_code, properties):
-    """Refait l'abonnement après chaque connexion au broker."""
+    """Abonne le service aux sept topics du Pi après chaque connexion au broker."""
     if reason_code.is_failure:
         print(f"Échec de connexion au broker : {reason_code}")
         return
+
     print("Connecté au broker MQTT")
-    for topic in TOPICS:
-        client.subscribe(topic)
+    # Abonnement ici : il est refait automatiquement après une reconnexion
+    client.subscribe(config.TOPIC_LUMIERE, qos=1)
+    client.subscribe(config.TOPIC_SOL, qos=1)
+    client.subscribe(config.TOPIC_EAU, qos=1)
+    client.subscribe(config.TOPIC_ARROSAGE, qos=1)
+    client.subscribe(config.TOPIC_STATUT, qos=1)
+    client.subscribe(config.TOPIC_CONFIGURATION, qos=1)
+    client.subscribe(config.TOPIC_RESULTAT, qos=1)
 
 
 def on_message(client, userdata, msg):
-    """Reçoit le JSON et conserve l'horodatage créé lors de l'acquisition."""
-    # Paho fournit userdata automatiquement; il n'est pas utilisé ici.
-    if msg.topic not in TOPICS:
-        print(f"Topic inconnu ignoré : {msg.topic}")
+    """Décode le JSON et convertit la clé horodatage du message en date UTC.
+
+    Ajoute le message au fichier JSONL avant de lire les autres clés requises
+    par le topic. Chaque case indique le traitement appliqué dans MongoDB.
+
+    Args:
+        client: Client MQTT fourni par Paho.
+        userdata: Données utilisateur du client MQTT.
+        msg: Message Paho contenant topic et payload JSON en UTF-8.
+    """
+    try:
+        donnees = json.loads(msg.payload.decode("utf-8"))
+        # Le Pi envoie l'heure UTC d'acquisition en texte ISO : on la convertit
+        # en date pour MongoDB (comme dans la démo du cours)
+        horodatage = datetime.fromisoformat(donnees["horodatage"]).astimezone(timezone.utc)
+    except (UnicodeDecodeError, ValueError, KeyError, TypeError, AttributeError):
+        print(f"Message invalide ignoré : {msg.payload}")
         return
-    try:
-        mesure = json.loads(msg.payload.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError):
-        print("Message invalide ignoré.")
-        return
-    if not isinstance(mesure, dict) or not mesure.get("horodatage"):
-        print("Mesure sans horodatage ignorée.")
-        return
-    print(mesure)
-    try:
-        with open(FICHIER_DONNEES, "a", encoding="utf-8") as fichier:
-            fichier.write(json.dumps(mesure) + "\n")
-    except OSError as erreur:
-        print(f"Impossible d'enregistrer la mesure : {erreur}")
+
+    # Copie brute de chaque message reçu
+    with open(FICHIER_DONNEES, "a", encoding="utf-8") as fichier:
+        fichier.write(json.dumps(donnees) + "\n")
 
     try:
-        enregistrer_donnees(msg.topic, mesure)
-    except (PyMongoError, ValueError, KeyError, TypeError) as erreur:
-        print(f"Impossible d'enregistrer la mesure dans MongoDB : {erreur}")
+        match msg.topic:
+            case config.TOPIC_LUMIERE:
+                enregistrer_lumiere(donnees, horodatage)
+            case config.TOPIC_SOL:
+                enregistrer_sol(donnees, horodatage)
+            case config.TOPIC_EAU:
+                enregistrer_eau(donnees, horodatage)
+            case config.TOPIC_ARROSAGE:
+                enregistrer_arrosage(donnees, horodatage)
+            case config.TOPIC_STATUT:
+                # Dans le statut, les seuils sont regroupés sous parametres.
+                enregistrer_configuration(
+                    donnees["plante_id"], donnees["parametres"], horodatage
+                )
+            case config.TOPIC_CONFIGURATION:
+                # Dans le message de configuration, les seuils sont à la racine.
+                enregistrer_configuration(donnees["plante_id"], donnees, horodatage)
+                # Une copie retenue rejouée à l'abonnement sert à resynchroniser Plante.
+                if not msg.retain:
+                    enregistrer_evenement("configuration", donnees, horodatage)
+            case config.TOPIC_RESULTAT:
+                enregistrer_evenement("commande", donnees, horodatage)
+    except KeyError as erreur:
+        print(f"Champ manquant {erreur}, message ignoré : {donnees}")
+    except PyMongoError as erreur:
+        # Pour éviter qu'une panne d'Atlas arrête tout le service
+        print(f"Erreur MongoDB, message perdu : {erreur}")
 
 
-def main():
-    """Réutilise un seul client MongoDB et ferme les connexions à l'arrêt."""
-    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id="ferixu-frontend-subscriber")
-    client.on_connect = on_connect
-    client.on_message = on_message
+# 3. Écrire les données dans MongoDB, dans l’ordre des topics traités
 
-    try:
-        DOSSIER_DONNEES.mkdir(exist_ok=True)
-        try:
-            initialiser_indexes()
-        except PyMongoError as erreur:
-            print(f"Impossible d'initialiser les index MongoDB : {erreur}")
-        client.connect(config.MQTT_HOTE, config.MQTT_PORT, 60)
-        client.loop_forever()
-    except KeyboardInterrupt:
-        print("Arrêt du service d'ingestion…")
-    finally:
-        try:
-            client.disconnect()
-        finally:
-            mongo.close()
 
+def enregistrer_lumiere(donnees: dict, horodatage: datetime) -> None:
+    """Ajoute une mesure horodatée à la série temporelle Lumiere pour le graphique (EF20).
+
+    Remplace ensuite le champ lux dans Plante pour l’accueil (EF18).
+
+    Args:
+        donnees: Message MQTT avec plante_id (entier) et lux (nombre en lux).
+        horodatage: Date de la mesure, déjà convertie en UTC.
+    """
+
+    db.Lumiere.insert_one(
+        {
+            "horodatage": horodatage,
+            "plante_id": donnees["plante_id"],  # référence
+            "lux": donnees["lux"],
+        }
+    )
+    ecrire_dans_plante(
+        donnees["plante_id"], horodatage, champs_a_remplacer={"lux": donnees["lux"]}
+    )
+    print(f"[{horodatage}] Lumière : {donnees['lux']} lux")
+
+
+def enregistrer_sol(donnees: dict, horodatage: datetime) -> None:
+    """Ajoute une mesure horodatée à la série temporelle Temperature_humidite (EF19).
+
+    Remplace ensuite temperature_c et humidite_brut dans Plante pour l’accueil (EF18).
+
+    Args:
+        donnees: Message MQTT avec les clés suivantes.
+            plante_id (int): Identifiant correspondant à Plante.id.
+            temperature_c (float): Température du sol en degrés Celsius.
+            humidite_brut (float): Valeur brute du capteur. L’ancienne clé
+                humidite_brute est acceptée si humidite_brut est absente.
+        horodatage: Date de la mesure, déjà convertie en UTC.
+    """
+
+    if "humidite_brut" in donnees:
+        humidite_brut = donnees["humidite_brut"]
+    else:
+        # Les anciennes versions du Pi envoient humidite_brute.
+        humidite_brut = donnees["humidite_brute"]
+
+    plante_id = donnees["plante_id"]
+    temperature_c = donnees["temperature_c"]
+    mesures_du_sol = {
+        "temperature_c": temperature_c,
+        "humidite_brut": humidite_brut,
+        # Pourcentage calibré par le Pi (None sans calibration), comparé au seuil
+        "humidite_pct": donnees.get("humidite_pct"),
+    }
+    db.Temperature_humidite.insert_one(
+        {"horodatage": horodatage, "plante_id": plante_id, **mesures_du_sol}
+    )
+    ecrire_dans_plante(plante_id, horodatage, champs_a_remplacer=mesures_du_sol)
+    print(f"[{horodatage}] Sol : {temperature_c} °C, humidité {humidite_brut}")
+
+
+def enregistrer_eau(donnees: dict, horodatage: datetime) -> None:
+    """Remplace eau_vide dans Plante pour afficher l’état du réservoir à l’accueil (EF18).
+
+    Args:
+        donnees: Message MQTT avec plante_id (entier) et vide (booléen).
+            vide vaut True quand le niveau d’eau est insuffisant.
+        horodatage: Date de la lecture du flotteur, déjà convertie en UTC.
+    """
+
+    ecrire_dans_plante(
+        donnees["plante_id"], horodatage, champs_a_remplacer={"eau_vide": donnees["vide"]}
+    )
+    print(f"[{horodatage}] Réservoir vide : {donnees['vide']}")
+
+
+def enregistrer_arrosage(donnees: dict, horodatage: datetime) -> None:
+    """Ajoute un document à la collection Arrosage, que l’API compte sur 24 h (EF23).
+
+    Avance dernier_arrosage dans Plante seulement si l’événement est plus récent.
+
+    Args:
+        donnees: Message MQTT avec plante_id (entier) et auto (booléen).
+            auto vaut False pour un arrosage manuel ou un test de pompe.
+        horodatage: Date du démarrage de la pompe, déjà convertie en UTC.
+    """
+
+    db.Arrosage.insert_one(
+        {
+            "horodatage": horodatage,
+            "plante_id": donnees["plante_id"],
+            "auto": donnees["auto"],
+            # automatique, manuel ou test (absent des anciens messages)
+            "mode": donnees.get("mode"),
+        }
+    )
+    ecrire_dans_plante(
+        donnees["plante_id"], horodatage, mettre_a_jour_dernier_arrosage=True
+    )
+    print(f"[{horodatage}] Arrosage (auto : {donnees['auto']})")
+
+
+def enregistrer_evenement(type_evenement: str, donnees: dict, horodatage: datetime) -> None:
+    """Ajoute une activité à la collection Evenement (historique des activités).
+
+    Types : « configuration » (paramètres appliqués par le Pi) et « commande »
+    (résultat d'une commande manuelle : arrosage, test de la pompe ou du feu).
+
+    Args:
+        type_evenement: configuration ou commande.
+        donnees: Message MQTT complet, avec plante_id.
+        horodatage: Date du message en UTC.
+    """
+    details = {
+        cle: valeur
+        for cle, valeur in donnees.items()
+        if cle not in ("plante_id", "horodatage")
+    }
+    db.Evenement.insert_one(
+        {
+            "horodatage": horodatage,
+            "plante_id": donnees["plante_id"],  # référence
+            "type": type_evenement,
+            "details": details,
+        }
+    )
+    print(f"[{horodatage}] Événement {type_evenement} : {details}")
+
+
+def enregistrer_configuration(plante_id: int, parametres: dict, horodatage: datetime) -> None:
+    """Remplace seuil_humidite et seuil_luminosite dans Plante pour la page Paramètres (EF24).
+
+    Les seuils viennent du statut périodique du Pi ou du message de configuration appliquée.
+
+    Args:
+        plante_id: Identifiant correspondant à Plante.id.
+        parametres: Dictionnaire avec humidite_min (pourcentage) et lux_min (lux).
+        horodatage: Date du message de statut ou de configuration en UTC.
+    """
+    ecrire_dans_plante(
+        plante_id,
+        horodatage,
+        champs_a_remplacer={
+            "seuil_humidite": parametres["humidite_min"],
+            "seuil_luminosite": parametres["lux_min"],
+        },
+    )
+
+
+def ecrire_dans_plante(
+    plante_id: int,
+    horodatage: datetime,
+    *,
+    champs_a_remplacer: dict | None = None,
+    mettre_a_jour_dernier_arrosage: bool = False,
+) -> None:
+    """Effectue la mise à jour de la collection Plante utilisée par l’accueil.
+
+    Applique les valeurs reçues avec $set et fait avancer les dates avec $max.
+    L’upsert crée la fiche avec ses valeurs initiales si elle est absente.
+
+    Args:
+        plante_id: Identifiant du document Plante à mettre à jour ou à créer.
+        horodatage: Date UTC du message.
+        champs_a_remplacer: Mesures, état du réservoir ou seuils à copier.
+        mettre_a_jour_dernier_arrosage: Utilise aussi la date du message pour
+            dernier_arrosage si elle est plus récente.
+    """
+    dates_a_actualiser = {"horodatage": horodatage}
+    if mettre_a_jour_dernier_arrosage:
+        dates_a_actualiser["dernier_arrosage"] = horodatage
+
+    modifications = {"$max": dates_a_actualiser, "$setOnInsert": PLANTE_INITIALE}
+    if champs_a_remplacer:
+        modifications["$set"] = champs_a_remplacer
+
+    db.Plante.update_one({"id": plante_id}, modifications, upsert=True)
+
+
+# Point d’entrée du service
 
 if __name__ == "__main__":
-    main()
+    if not config.MONGODB_URI or not config.MONGODB_BASE:
+        raise RuntimeError("Variables d'environnement manquantes : MONGODB_URI et MONGODB_BASE")
+
+    # tz_aware=True : les dates lues de MongoDB sont en UTC avec leur fuseau
+    client_mongo = MongoClient(config.MONGODB_URI, serverSelectionTimeoutMS=5000, tz_aware=True)
+    db = client_mongo[config.MONGODB_BASE]
+    preparer_base(db)
+    FICHIER_DONNEES.parent.mkdir(exist_ok=True)
+
+    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id="ferixu-ingestion")
+    client.on_connect = on_connect
+    client.on_message = on_message
+    # Connexion sécurisée au broker EMQX, comme dans la démo du cours
+    client.username_pw_set(config.MQTT_UTILISATEUR, config.MQTT_MOT_DE_PASSE)
+    client.tls_set(ca_certs=str(config.MQTT_CERTIFICAT_CA))
+
+    client.connect(config.MQTT_HOTE, config.MQTT_PORT, 60)
+
+    try:
+        # La boucle MQTT appelle on_connect et on_message.
+        client.loop_forever()
+    except KeyboardInterrupt:
+        print("Arrêt du service d'ingestion ...")
+    finally:
+        client.disconnect()
+        client_mongo.close()
